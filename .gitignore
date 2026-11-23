@@ -1,0 +1,8 @@
+out/
+*.pdb
+*.ilk
+*.exp
+*.obj
+*.tlog
+*.log
+WebView2UserData/
