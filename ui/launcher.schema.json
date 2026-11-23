@@ -1,0 +1,328 @@
+{
+  "$schema": "mcla-launcher-schema-v1",
+  "window": {
+    "width": 650,
+    "height": 446,
+    "resizable": false,
+    "transparent": true,
+    "decorations": false
+  },
+  "storageKey": "mcla_toml_config_v1",
+  "tabs": [
+    {
+      "id": "main",
+      "title": "LAUNCHER",
+      "icon": "play",
+      "visible": true,
+      "isHome": true,
+      "items": [
+        {
+          "id": "play",
+          "type": "action",
+          "visible": true,
+          "label": "PLAY",
+          "sub": "LAUNCH MCLA.EXE (MCLA-RECOMP)",
+          "action": "launchGame"
+        },
+        {
+          "id": "nav_display",
+          "type": "nav",
+          "visible": true,
+          "label": "DISPLAY & VIDEO",
+          "targetTab": "display"
+        },
+        {
+          "id": "nav_controls",
+          "type": "nav",
+          "visible": true,
+          "label": "CONTROLS & UI",
+          "targetTab": "controls"
+        },
+        {
+          "id": "nav_more",
+          "type": "nav",
+          "visible": true,
+          "label": "FILES & LOGS",
+          "targetTab": "files"
+        },
+        {
+          "id": "exit",
+          "type": "action",
+          "visible": true,
+          "label": "EXIT LAUNCHER",
+          "action": "exitLauncher"
+        }
+      ]
+    },
+    {
+      "id": "display",
+      "title": "DISPLAY",
+      "icon": "display",
+      "visible": true,
+      "subHeaderLeft": "< MCLA.TOML // DISPLAY >",
+      "subHeaderRight": "CVAR / VIDEO",
+      "options": [
+        {
+          "key": "renderer_mode",
+          "tomlSection": "graphics",
+          "cliFlag": "--renderer_mode",
+          "label": "RENDERER MODE",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "AUTOMATIC",
+            "DIRECT3D 12",
+            "VULKAN"
+          ],
+          "valueMap": {
+            "AUTOMATIC": "auto",
+            "DIRECT3D 12": "d3d12",
+            "VULKAN": "vulkan"
+          },
+          "default": "AUTOMATIC"
+        },
+        {
+          "key": "resolution_scale",
+          "tomlSection": "display",
+          "cliFlag": "--resolution_scale",
+          "label": "RESOLUTION SCALE",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "1X (720P)",
+            "2X (1440P)",
+            "3X (4K)"
+          ],
+          "valueMap": {
+            "1X (720P)": 1,
+            "2X (1440P)": 2,
+            "3X (4K)": 3
+          },
+          "default": "2X (1440P)"
+        },
+        {
+          "key": "mcla_fps",
+          "tomlSection": "display",
+          "cliFlag": "--mcla_fps",
+          "label": "FPS LIMIT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "30 FPS",
+            "40 FPS",
+            "45 FPS",
+            "50 FPS",
+            "60 FPS",
+            "120 FPS",
+            "UNCAPPED"
+          ],
+          "valueMap": {
+            "30 FPS": 30,
+            "40 FPS": 40,
+            "45 FPS": 45,
+            "50 FPS": 50,
+            "60 FPS": 60,
+            "120 FPS": 120,
+            "UNCAPPED": 0
+          },
+          "default": "60 FPS"
+        },
+        {
+          "key": "fullscreen",
+          "tomlSection": "display",
+          "cliFlag": "--fullscreen",
+          "label": "FULLSCREEN",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "default": "ON"
+        },
+        {
+          "key": "vsync",
+          "tomlSection": "display",
+          "cliFlag": "--vsync",
+          "label": "V-SYNC",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "default": "ON"
+        }
+      ]
+    },
+    {
+      "id": "controls",
+      "title": "INPUT & UI",
+      "icon": "controls",
+      "visible": true,
+      "subHeaderLeft": "< MCLA.TOML // INPUT & UI >",
+      "subHeaderRight": "XINPUT / DUALSENSE",
+      "options": [
+        {
+          "key": "prompts",
+          "tomlSection": "input",
+          "cliFlag": "--prompts",
+          "label": "BUTTON PROMPTS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "AUTO DETECT",
+            "XBOX 360",
+            "PLAYSTATION",
+            "PC KEYBOARD"
+          ],
+          "valueMap": {
+            "AUTO DETECT": "auto",
+            "XBOX 360": "xbox",
+            "PLAYSTATION": "ps",
+            "PC KEYBOARD": "pc"
+          },
+          "default": "AUTO DETECT"
+        },
+        {
+          "key": "vibration",
+          "tomlSection": "input",
+          "cliFlag": "--vibration",
+          "label": "VIBRATION",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "default": "ON"
+        },
+        {
+          "key": "mcla_adaptive_triggers",
+          "tomlSection": "input",
+          "cliFlag": "--mcla_adaptive_triggers",
+          "label": "ADAPTIVE TRIGGERS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "default": "OFF"
+        },
+        {
+          "key": "mcla_ui_interpolate",
+          "tomlSection": "ui",
+          "cliFlag": "--mcla_ui_interpolate",
+          "label": "SMOOTH UI (INTERP)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "default": "ON"
+        },
+        {
+          "key": "mcla_intro",
+          "tomlSection": "game",
+          "cliFlag": "--mcla_intro",
+          "label": "INTRO VIDEO",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "default": "ON"
+        },
+        {
+          "key": "deadzone",
+          "tomlSection": "input",
+          "cliFlag": "--deadzone",
+          "label": "STEERING DEADZONE",
+          "type": "slider",
+          "visible": true,
+          "min": 0,
+          "max": 100,
+          "step": 5,
+          "default": 15
+        }
+      ]
+    },
+    {
+      "id": "files",
+      "title": "MORE",
+      "icon": "files",
+      "visible": true,
+      "subHeaderLeft": "< MCLA-RECOMP // TOOLS >",
+      "subHeaderRight": "545407F8",
+      "options": [
+        {
+          "key": "open_folder",
+          "label": "OPEN GAME FOLDER",
+          "type": "action",
+          "visible": true,
+          "action": "browseFiles",
+          "default": "MCLA.EXE DIR"
+        },
+        {
+          "key": "build_logs",
+          "label": "BUILD LOGS",
+          "type": "action",
+          "visible": true,
+          "action": "openLogs",
+          "default": "RUN.LOG"
+        },
+        {
+          "key": "prepare_shaders",
+          "label": "PREPARE SHADERS",
+          "type": "action",
+          "visible": false,
+          "action": "prepareShaders",
+          "default": "RUN PACK"
+        },
+        {
+          "key": "rebuild_game",
+          "label": "REBUILD FROM ISO",
+          "type": "action",
+          "visible": false,
+          "action": "rebuildGame",
+          "default": "XBOX 360 DISC"
+        },
+        {
+          "key": "cli_options",
+          "label": "MORE MCLA.EXE OPTS",
+          "type": "action",
+          "visible": false,
+          "action": "editCliFlags",
+          "default": "--MCLA_FPS=60"
+        }
+      ]
+    }
+  ]
+}
