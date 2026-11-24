@@ -5,7 +5,8 @@
     "height": 446,
     "resizable": false,
     "transparent": true,
-    "decorations": false
+    "decorations": false,
+    "alwaysOnTop": false
   },
   "storageKey": "mcla_toml_config_v1",
   "tabs": [
@@ -32,17 +33,31 @@
           "targetTab": "display"
         },
         {
+          "id": "nav_graphics",
+          "type": "nav",
+          "visible": true,
+          "label": "GRAPHICS & SHADOWS",
+          "targetTab": "graphics"
+        },
+        {
           "id": "nav_controls",
           "type": "nav",
           "visible": true,
-          "label": "CONTROLS & UI",
+          "label": "CONTROLS & KEYMAP",
           "targetTab": "controls"
+        },
+        {
+          "id": "nav_tuning",
+          "type": "nav",
+          "visible": true,
+          "label": "TUNING & PERF",
+          "targetTab": "tuning"
         },
         {
           "id": "nav_more",
           "type": "nav",
           "visible": true,
-          "label": "FILES & LOGS",
+          "label": "MORE & TOOLS",
           "targetTab": "files"
         },
         {
@@ -60,77 +75,67 @@
       "icon": "display",
       "visible": true,
       "subHeaderLeft": "< MCLA.TOML // DISPLAY >",
-      "subHeaderRight": "CVAR / VIDEO",
+      "subHeaderRight": "D3D12",
       "options": [
         {
           "key": "renderer_mode",
-          "tomlSection": "graphics",
-          "cliFlag": "--renderer_mode",
-          "label": "RENDERER MODE",
+          "label": "RENDERER",
           "type": "cycle",
           "visible": true,
           "values": [
-            "AUTOMATIC",
-            "DIRECT3D 12",
-            "VULKAN"
+            "native",
+            "legacy",
+            "capture"
           ],
+          "default": "native",
+          "tomlSection": "graphics",
           "valueMap": {
-            "AUTOMATIC": "auto",
-            "DIRECT3D 12": "d3d12",
-            "VULKAN": "vulkan"
-          },
-          "default": "AUTOMATIC"
+            "native": "native",
+            "legacy": "legacy",
+            "capture": "capture"
+          }
         },
         {
           "key": "resolution_scale",
-          "tomlSection": "display",
-          "cliFlag": "--resolution_scale",
-          "label": "RESOLUTION SCALE",
+          "label": "RENDER SCALE",
           "type": "cycle",
           "visible": true,
           "values": [
-            "1X (720P)",
-            "2X (1440P)",
-            "3X (4K)"
+            "1x (720P)",
+            "2x (1440P)",
+            "3x (4K)"
           ],
+          "default": "2x (1440P)",
           "valueMap": {
-            "1X (720P)": 1,
-            "2X (1440P)": 2,
-            "3X (4K)": 3
+            "1x (720P)": 1,
+            "2x (1440P)": 2,
+            "3x (4K)": 3
           },
-          "default": "2X (1440P)"
+          "tomlSection": "_env"
         },
         {
           "key": "mcla_fps",
-          "tomlSection": "display",
-          "cliFlag": "--mcla_fps",
           "label": "FPS LIMIT",
           "type": "cycle",
           "visible": true,
           "values": [
-            "30 FPS",
-            "40 FPS",
-            "45 FPS",
-            "50 FPS",
-            "60 FPS",
-            "120 FPS",
-            "UNCAPPED"
+            "30",
+            "60",
+            "120",
+            "UNCAPPED",
+            "STOCK"
           ],
+          "default": "60",
           "valueMap": {
-            "30 FPS": 30,
-            "40 FPS": 40,
-            "45 FPS": 45,
-            "50 FPS": 50,
-            "60 FPS": 60,
-            "120 FPS": 120,
-            "UNCAPPED": 0
-          },
-          "default": "60 FPS"
+            "30": 30,
+            "60": 60,
+            "120": 120,
+            "UNCAPPED": 0,
+            "STOCK": -1
+          }
         },
         {
           "key": "fullscreen",
-          "tomlSection": "display",
-          "cliFlag": "--fullscreen",
           "label": "FULLSCREEN",
           "type": "cycle",
           "visible": true,
@@ -138,16 +143,15 @@
             "ON",
             "OFF"
           ],
+          "default": "ON",
+          "tomlSection": "display",
           "valueMap": {
             "ON": true,
             "OFF": false
-          },
-          "default": "ON"
+          }
         },
         {
           "key": "vsync",
-          "tomlSection": "display",
-          "cliFlag": "--vsync",
           "label": "V-SYNC",
           "type": "cycle",
           "visible": true,
@@ -155,47 +159,273 @@
             "ON",
             "OFF"
           ],
+          "default": "OFF",
           "valueMap": {
             "ON": true,
             "OFF": false
           },
-          "default": "ON"
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_aspect_ratio",
+          "label": "ASPECT RATIO",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "auto",
+            "16:9",
+            "43:18"
+          ],
+          "default": "auto",
+          "tomlSection": "display",
+          "valueMap": {
+            "auto": "auto",
+            "16:9": "16:9",
+            "43:18": "43:18"
+          }
+        },
+        {
+          "key": "mcla_display_gamma",
+          "label": "DISPLAY GAMMA",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "tv",
+            "pc"
+          ],
+          "default": "tv",
+          "tomlSection": "display",
+          "valueMap": {
+            "tv": "tv",
+            "pc": "pc"
+          }
+        },
+        {
+          "key": "mcla_motion_blur",
+          "label": "MOTION BLUR",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "display",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_hide_cursor",
+          "label": "HIDE CURSOR",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "controls",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_d3d12_msaa_line_guard",
+          "label": "MSAA LINE GUARD",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "AUTO",
+            "OFF",
+            "ON"
+          ],
+          "default": "AUTO",
+          "tomlSection": "graphics",
+          "valueMap": {
+            "AUTO": -1,
+            "OFF": 0,
+            "ON": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "graphics",
+      "title": "GRAPHICS",
+      "icon": "graphics",
+      "visible": true,
+      "subHeaderLeft": "< MCLA.TOML // GRAPHICS >",
+      "subHeaderRight": "SHADOWS / LOD",
+      "options": [
+        {
+          "key": "MCLA_LOD_SCALE",
+          "label": "LOD SCALE",
+          "type": "slider",
+          "visible": true,
+          "default": 1.0,
+          "tomlSection": "_env",
+          "min": 0.25,
+          "max": 2.0,
+          "step": 0.05
+        },
+        {
+          "key": "MCLA_FLOW_LOD",
+          "label": "FLOW LOD",
+          "type": "slider",
+          "visible": true,
+          "default": 1.0,
+          "tomlSection": "_env",
+          "min": 0.25,
+          "max": 2.0,
+          "step": 0.05
+        },
+        {
+          "key": "MCLA_DEV_NORACESHADOWS",
+          "label": "RACE SHADOWS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_DEV_FASTVEHSHADOWS",
+          "label": "FAST CAR SHADOWS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_race_shadows",
+          "label": "RACE SHADOWS (cvar)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "renderer",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_fast_car_shadows",
+          "label": "FAST CAR SHADOWS (cvar)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "tomlSection": "renderer",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_foliage_impostors",
+          "label": "FOLIAGE IMPOSTORS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "renderer",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_fullscreen_blur",
+          "label": "FULLSCREEN BLUR",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "renderer",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_settings_menu",
+          "label": "IN-GAME SETTINGS MENU",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "ui",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
         }
       ]
     },
     {
       "id": "controls",
-      "title": "INPUT & UI",
+      "title": "CONTROLS",
       "icon": "controls",
       "visible": true,
-      "subHeaderLeft": "< MCLA.TOML // INPUT & UI >",
-      "subHeaderRight": "XINPUT / DUALSENSE",
+      "subHeaderLeft": "< MCLA.TOML // CONTROLS >",
+      "subHeaderRight": "KEYMAP",
       "options": [
         {
-          "key": "prompts",
-          "tomlSection": "input",
-          "cliFlag": "--prompts",
+          "key": "mcla_button_prompts",
           "label": "BUTTON PROMPTS",
           "type": "cycle",
           "visible": true,
           "values": [
-            "AUTO DETECT",
-            "XBOX 360",
-            "PLAYSTATION",
-            "PC KEYBOARD"
+            "auto",
+            "xbox",
+            "ps",
+            "pc"
           ],
+          "default": "auto",
+          "tomlSection": "input",
           "valueMap": {
-            "AUTO DETECT": "auto",
-            "XBOX 360": "xbox",
-            "PLAYSTATION": "ps",
-            "PC KEYBOARD": "pc"
-          },
-          "default": "AUTO DETECT"
+            "auto": "auto",
+            "xbox": "xbox",
+            "ps": "ps",
+            "pc": "pc"
+          }
         },
         {
-          "key": "vibration",
-          "tomlSection": "input",
-          "cliFlag": "--vibration",
+          "key": "mcla_vibration",
           "label": "VIBRATION",
           "type": "cycle",
           "visible": true,
@@ -203,74 +433,522 @@
             "ON",
             "OFF"
           ],
-          "valueMap": {
-            "ON": true,
-            "OFF": false
-          },
-          "default": "ON"
-        },
-        {
-          "key": "mcla_adaptive_triggers",
+          "default": "ON",
           "tomlSection": "input",
-          "cliFlag": "--mcla_adaptive_triggers",
-          "label": "ADAPTIVE TRIGGERS",
-          "type": "cycle",
-          "visible": true,
-          "values": [
-            "ON",
-            "OFF"
-          ],
           "valueMap": {
             "ON": true,
             "OFF": false
-          },
-          "default": "OFF"
+          }
         },
         {
-          "key": "mcla_ui_interpolate",
-          "tomlSection": "ui",
-          "cliFlag": "--mcla_ui_interpolate",
-          "label": "SMOOTH UI (INTERP)",
-          "type": "cycle",
-          "visible": true,
-          "values": [
-            "ON",
-            "OFF"
-          ],
-          "valueMap": {
-            "ON": true,
-            "OFF": false
-          },
-          "default": "ON"
-        },
-        {
-          "key": "mcla_intro",
-          "tomlSection": "game",
-          "cliFlag": "--mcla_intro",
-          "label": "INTRO VIDEO",
-          "type": "cycle",
-          "visible": true,
-          "values": [
-            "ON",
-            "OFF"
-          ],
-          "valueMap": {
-            "ON": true,
-            "OFF": false
-          },
-          "default": "ON"
-        },
-        {
-          "key": "deadzone",
-          "tomlSection": "input",
-          "cliFlag": "--deadzone",
-          "label": "STEERING DEADZONE",
+          "key": "mcla_left_stick_deadzone",
+          "label": "LEFT DEADZONE",
           "type": "slider",
           "visible": true,
+          "default": 24.0,
+          "tomlSection": "input",
           "min": 0,
-          "max": 100,
-          "step": 5,
-          "default": 15
+          "max": 30,
+          "step": 1
+        },
+        {
+          "key": "mcla_right_stick_deadzone",
+          "label": "RIGHT DEADZONE",
+          "type": "slider",
+          "visible": true,
+          "default": 24.0,
+          "tomlSection": "input",
+          "min": 0,
+          "max": 30,
+          "step": 1
+        },
+        {
+          "key": "mcla_script_pad_latch_ms",
+          "label": "PAD LATCH (ms)",
+          "type": "slider",
+          "visible": true,
+          "default": 100,
+          "tomlSection": "input",
+          "min": 0,
+          "max": 500,
+          "step": 10
+        },
+        {
+          "key": "mcla_key_throttle",
+          "label": "THROTTLE (RT)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "W",
+            "Up",
+            "I"
+          ],
+          "default": "W",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_brake",
+          "label": "BRAKE (LT)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "S",
+            "Down",
+            "K"
+          ],
+          "default": "S",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_steer_left",
+          "label": "STEER LEFT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "A",
+            "Left",
+            "J"
+          ],
+          "default": "A",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_steer_right",
+          "label": "STEER RIGHT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "D",
+            "Right",
+            "L"
+          ],
+          "default": "D",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_a",
+          "label": "A (CONFIRM)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Return",
+            "Space",
+            "Enter"
+          ],
+          "default": "Return",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_b",
+          "label": "B (CANCEL)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Escape",
+            "Backspace"
+          ],
+          "default": "Escape",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_x",
+          "label": "X (HANDBRAKE)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "C",
+            "LShift",
+            "Space"
+          ],
+          "default": "C",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_y",
+          "label": "Y (CAMERA)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "V",
+            "C"
+          ],
+          "default": "V",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_start",
+          "label": "START (PAUSE)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Tab",
+            "Return",
+            "P"
+          ],
+          "default": "Tab",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_back",
+          "label": "BACK (RESET)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "B",
+            "F"
+          ],
+          "default": "B",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_left_shoulder",
+          "label": "LEFT SHOULDER",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Q",
+            "1"
+          ],
+          "default": "Q",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_right_shoulder",
+          "label": "RIGHT SHOULDER",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "E",
+            "LCtrl"
+          ],
+          "default": "E",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_lt",
+          "label": "LEFT TRIGGER",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "U",
+            "Q"
+          ],
+          "default": "U",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_rt",
+          "label": "RIGHT TRIGGER",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "O",
+            "E"
+          ],
+          "default": "O",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_dpad_up",
+          "label": "DPAD UP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Up",
+            "W"
+          ],
+          "default": "Up",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_dpad_down",
+          "label": "DPAD DOWN",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Down",
+            "S"
+          ],
+          "default": "Down",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_dpad_left",
+          "label": "DPAD LEFT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Left",
+            "A"
+          ],
+          "default": "Left",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_dpad_right",
+          "label": "DPAD RIGHT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "Right",
+            "D"
+          ],
+          "default": "Right",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_ry_up",
+          "label": "R-STICK UP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "I",
+            "Up"
+          ],
+          "default": "I",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_ry_down",
+          "label": "R-STICK DOWN",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "K",
+            "Down"
+          ],
+          "default": "K",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_rx_left",
+          "label": "R-STICK LEFT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "J",
+            "Left"
+          ],
+          "default": "J",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_rx_right",
+          "label": "R-STICK RIGHT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "L",
+            "Right"
+          ],
+          "default": "L",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_keymap_log",
+          "label": "LOG KEYMAP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "tomlSection": "input",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "tuning",
+      "title": "TUNING",
+      "icon": "tuning",
+      "visible": true,
+      "subHeaderLeft": "< MCLA.TOML // PERF >",
+      "subHeaderRight": "MCLA CORE",
+      "options": [
+        {
+          "key": "mcla_dt_max",
+          "label": "DT MAX",
+          "type": "slider",
+          "visible": true,
+          "default": 0.125,
+          "tomlSection": "mcla",
+          "min": 0.01,
+          "max": 0.5,
+          "step": 0.01
+        },
+        {
+          "key": "mcla_float_clock",
+          "label": "FLOAT CLOCK",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_pace_at_swap",
+          "label": "PACE AT SWAP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_swap_unlock",
+          "label": "SWAP UNLOCK",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_physics_continuous",
+          "label": "CONTINUOUS PHYSICS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_checkpoint_sweep",
+          "label": "CHECKPOINT SWEEP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_poll_wait",
+          "label": "POLL WAIT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_poll_spin_us",
+          "label": "POLL SPIN (us)",
+          "type": "slider",
+          "visible": true,
+          "default": 40,
+          "tomlSection": "mcla",
+          "min": 0,
+          "max": 2000,
+          "step": 10
+        },
+        {
+          "key": "mcla_poll_tail_us",
+          "label": "POLL TAIL (us)",
+          "type": "slider",
+          "visible": true,
+          "default": 400,
+          "tomlSection": "mcla",
+          "min": 0,
+          "max": 2000,
+          "step": 10
+        },
+        {
+          "key": "mcla_pump_wake_on_demand",
+          "label": "PUMP WAKE ON DEMAND",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_pump_wake_pause_s",
+          "label": "PUMP WAKE PAUSE (s)",
+          "type": "slider",
+          "visible": true,
+          "default": 60,
+          "tomlSection": "mcla",
+          "min": 0,
+          "max": 3600,
+          "step": 10
+        },
+        {
+          "key": "mcla_pump_sleep_max_ms",
+          "label": "PUMP SLEEP MAX (ms)",
+          "type": "slider",
+          "visible": true,
+          "default": -1,
+          "tomlSection": "mcla",
+          "min": -1,
+          "max": 500,
+          "step": 1
+        },
+        {
+          "key": "mcla_patch_groups",
+          "label": "PATCH GROUPS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "all",
+            "none",
+            "sdk,guest,native"
+          ],
+          "default": "all",
+          "tomlSection": "mcla"
         }
       ]
     },
@@ -280,7 +958,7 @@
       "icon": "files",
       "visible": true,
       "subHeaderLeft": "< MCLA-RECOMP // TOOLS >",
-      "subHeaderRight": "545407F8",
+      "subHeaderRight": "",
       "options": [
         {
           "key": "open_folder",

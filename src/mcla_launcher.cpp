@@ -23,6 +23,7 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
+#include <map>
 #include <codecvt>
 #include "wv2/WebView2.h"
 
@@ -84,44 +85,120 @@ static std::string tomlToJson() {
     out += "}"; return out;
 }
 // Write payload.extra.toml (section -> key -> value) to cache/mcla.toml, preserving other lines.
-static void writeToml(const std::string& json) {
-    // Extract section/key/value triples with a tiny scanner (values are simple scalars here).
-    std::vector<std::pair<std::string, std::string>> sets; // "section.key" -> toml line content
-    size_t pos = 0;
-    while ((pos = json.find('{', pos)) != std::string::npos) {
-        size_t close = json.find('}', pos);
-        if (close == std::string::npos) break;
-        std::string body = json.substr(pos + 1, close - pos - 1);
-        // crude split on ',' (no commas in these scalar values)
-        std::stringstream ss(body); std::string part;
-        while (std::getline(ss, part, ',')) {
-            size_t c = part.find(':'); if (c == std::string::npos) continue;
-            std::string k = part.substr(0, c), v = part.substr(c + 1);
-            auto trim=[](std::string x){ size_t a=x.find_first_not_of(" \t\r\n\"\u0000"); if(a==std::string::npos) return std::string(); size_t b=x.find_last_not_of(" \t\r\n"); return x.substr(a,b-a+1); };
-            k = trim(k); v = trim(v);
-            if (k.empty()) continue;
-            sets.push_back({ k, k + " = " + v });
+// Minimal JSON object parser for payload.extra.toml: { section: { key: scalar, ... }, ... }
+// Values are only strings/numbers/bools here. Writes flat, line-preserving mcla.toml.
+struct JVal { enum T{STR,NUM,BOOL,OBJ,NUL} type=NUL; std::string s; std::vector<std::pair<std::string,JVal>> obj; };
+static size_t jskip(const std::string& j,size_t i){ while(i<j.size()&&isspace((unsigned char)j[i]))i++; return i; }
+static std::string jstr(const std::string& j,size_t& i){
+    // j[i]=='"'
+    i++; std::string o;
+    while(i<j.size()&&j[i]!='"'){ if(j[i]=='\\'&&i+1<j.size()){i++; char c=j[i]; o+= (c=='n'?'\n':(c=='r'?'\r':(c=='t'?'\t':c)));} else o+=j[i]; i++; }
+    if(i<j.size())i++; return o;
+}
+static JVal jparse(const std::string& j,size_t& i){
+    JVal v; i=jskip(j,i);
+    if(i>=j.size())return v;
+    if(j[i]=='"'){ v.type=JVal::STR; v.s=jstr(j,i); return v; }
+    if(j[i]=='{'){
+        v.type=JVal::OBJ; i++;
+        while(true){ i=jskip(j,i); if(i>=j.size()||j[i]=='}'){if(i<j.size())i++;break;}
+            std::string k = (j[i]=='"')?jstr(j,i):"";
+            i=jskip(j,i); if(i<j.size()&&j[i]==':')i++;
+            std::string key=k; JVal val=jparse(j,i);
+            // map UI key -> real cvar/env name
+            if(key=="prompts")key="mcla_button_prompts";
+            else if(key=="vibration")key="mcla_vibration";
+            else if(key=="deadzone")key="mcla_left_stick_deadzone";
+            v.obj.push_back({key,val});
+            i=jskip(j,i); if(i<j.size()&&j[i]==',')i++;
         }
-        pos = close + 1;
+        return v;
     }
-    if (sets.empty()) return;
-    std::wstring path = g_cacheDir + L"\\mcla.toml";
+    size_t st=i; while(i<j.size()&&j[i]!=','&&j[i]!='}'&&!isspace((unsigned char)j[i]))i++;
+    std::string tok=j.substr(st,i-st);
+    if(tok=="true"||tok=="false"){v.type=JVal::BOOL;v.s=tok;}
+    else {v.type=JVal::NUM;v.s=tok;}
+    return v;
+}
+static void writeToml(const std::string& json){
+    size_t i=0; JVal root=jparse(json,i);
+    if(root.type!=JVal::OBJ)return;
+    std::vector<std::pair<std::string,std::string>> sets;
+    std::vector<std::pair<std::string,std::string>> envSets;
+    for(auto& sec:root.obj){
+        if(sec.second.type!=JVal::OBJ)continue;
+        for(auto& kv:sec.second.obj){
+            std::string val;
+            val=kv.second.s;
+            if(val=="true")val="1"; else if(val=="false")val="0";
+            if(kv.first=="mcla_adaptive_triggers")continue;  // setting does not exist in the game
+            if(val=="null"||val.empty()){
+                // UI produced a null string for a slider: use the CVar default.
+                static const std::map<std::string,std::string> defs={
+                    {"mcla_left_stick_deadzone","24"},{"mcla_right_stick_deadzone","24"},
+                    {"mcla_script_pad_latch_ms","100"},{"mcla_dt_max","0.125"},
+                    {"mcla_poll_spin_us","40"},{"mcla_poll_tail_us","400"},
+                    {"mcla_pump_wake_pause_s","60"},{"mcla_pump_sleep_max_ms","-1"},
+                    {"MCLA_LOD_SCALE","1"},{"MCLA_FLOW_LOD","1"}
+                };
+                auto it=defs.find(kv.first);
+                if(it==defs.end())continue;
+                val=it->second;
+            }
+            if(sec.first=="_env"){
+                std::string k=kv.first;
+                if(k=="resolution_scale")k="MCLA_RENDER_SCALE";
+                else if(k=="vsync")k="MCLA_VSYNC";
+                envSets.push_back({k,k+"="+val});
+            } else {
+                sets.push_back({kv.first,kv.first+" = "+val});
+            }
+        }
+    }
+    // Route _env settings into the ini [env] section (merged with existing, preserving others)
+    if(!envSets.empty()){
+        std::wstring ini=g_dir+L"\\mcla_launcher.ini";
+        std::ifstream in(ini); std::vector<std::string> lines; std::string l;
+        bool inEnv=false;
+        while(std::getline(in,l)){
+            if(l.size()&&l[0]=='['){ inEnv = (l=="[env]"); }
+            if(inEnv){
+                for(auto& kv:envSets){
+                    size_t s=l.find_first_not_of(" \t");
+                    if(s==std::string::npos||l[s]==';'||l[s]=='[')continue;
+                    size_t eq=l.find('=',s); if(eq==std::string::npos)continue;
+                    std::string k=l.substr(s,eq-s); while(!k.empty()&&k.back()==' ')k.pop_back();
+                    if(k==kv.first){ l=kv.second; break; }
+                }
+            }
+            lines.push_back(l);
+        }
+        // append any not found
+        for(auto& kv:envSets){
+            bool found=false;
+            for(auto& line:lines){ size_t s=line.find_first_not_of(" \t"); if(s==std::string::npos||line[s]==';'||line[s]=='[')continue; size_t eq=line.find('=',s); if(eq==std::string::npos)continue; std::string k=line.substr(s,eq-s); while(!k.empty()&&k.back()==' ')k.pop_back(); if(k==kv.first){found=true;break;} }
+            if(!found){
+                if(lines.empty() || lines.back()!="[env]") lines.push_back("[env]");
+                lines.push_back(kv.second);
+            }
+        }
+        std::ofstream out(ini,std::ios::binary); for(auto& line:lines)out<<line<<"\r\n";
+    }
+    if(sets.empty())return;
+    std::wstring path=g_cacheDir+L"\\mcla.toml";
     std::ifstream in(path); std::vector<std::string> lines; std::string l;
-    while (std::getline(in, l)) lines.push_back(l);
-    for (auto& kv : sets) {
-        std::string key = kv.first.substr(kv.first.find('.') == std::string::npos ? 0 : kv.first.find('.') + 1);
-        bool found = false;
-        for (auto& line : lines) {
-            size_t s = line.find_first_not_of(" \t");
-            if (s == std::string::npos || line[s] == '#' || line[s] == '[') continue;
-            size_t eq = line.find('=', s); if (eq == std::string::npos) continue;
-            std::string k = line.substr(s, eq - s); while (!k.empty() && k.back() == ' ') k.pop_back();
-            if (k == key) { line = kv.second; found = true; break; }
+    while(std::getline(in,l))lines.push_back(l);
+    for(auto& kv:sets){
+        bool found=false;
+        for(auto& line:lines){
+            size_t s=line.find_first_not_of(" \t"); if(s==std::string::npos||line[s]=='#'||line[s]=='[')continue;
+            size_t eq=line.find('=',s); if(eq==std::string::npos)continue;
+            std::string k=line.substr(s,eq-s); while(!k.empty()&&k.back()==' ')k.pop_back();
+            if(k==kv.first){line=kv.second;found=true;break;}
         }
-        if (!found) lines.push_back(kv.second);
+        if(!found)lines.push_back(kv.second);
     }
-    std::ofstream out(path, std::ios::binary);
-    for (auto& line : lines) out << line << "\r\n";
+    std::ofstream out(path,std::ios::binary); for(auto& line:lines)out<<line<<"\r\n";
 }
 
 // ------------------------------- action dispatch ----------------------------------------------
