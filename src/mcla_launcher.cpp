@@ -128,11 +128,55 @@ static void writeToml(const std::string& json) {
 static void eval(const std::string& js) {
     if (g_web) g_web->ExecuteScript(widen(js).c_str(), nullptr);
 }
+// Data-driven child env from mcla_launcher.ini at LAUNCH time (no rebuild for new settings).
+static std::wstring buildChildEnv() {
+    std::vector<std::wstring> kv;
+    wchar_t* cur = GetEnvironmentStringsW();
+    for (wchar_t* p = cur; *p; p += wcslen(p) + 1) if (*p != L'=') kv.push_back(p);
+    FreeEnvironmentStringsW(cur);
+    auto setEnv = [&](const std::wstring& e) {
+        size_t eq = e.find(L'='); if (eq == std::wstring::npos || eq == 0) return;
+        for (auto& o : kv)
+            if (o.size() > eq && o[eq] == L'=' && _wcsnicmp(o.c_str(), e.c_str(), eq) == 0) { o = e; return; }
+        kv.push_back(e);
+    };
+    wchar_t buf[256];
+    auto get = [&](const wchar_t* k, const wchar_t* d)->std::wstring{ GetPrivateProfileStringW(L"launcher",k,d,buf,256,g_ini.c_str()); return std::wstring(buf); };
+    std::wstring res=get(L"res",L"2560x1440"); size_t x=res.find(L'x');
+    if(x!=std::wstring::npos){ setEnv(L"MCLA_WINDOW_W="+res.substr(0,x)); setEnv(L"MCLA_WINDOW_H="+res.substr(x+1)); }
+    setEnv(L"MCLA_RENDER_SCALE="+get(L"scale",L"2"));
+    std::wstring fs=get(L"fullscreen",L"1");
+    setEnv(std::wstring(L"MCLA_DISPLAY_MODE=")+(fs==L"1"?L"borderless_fullscreen":L"windowed"));
+    std::wstring name=get(L"name",L"SWA"); if(!name.empty())setEnv(L"MCLA_PROFILE_NAME="+name);
+    int ai=_wtoi(get(L"aspect",L"0").c_str()),aw=0;
+    if(ai==2)aw=1680; else if(ai==3)aw=2560;
+    else if(ai==0&&x!=std::wstring::npos)aw=(int)(720.0*_wtoi(res.substr(0,x).c_str())/std::max(1,_wtoi(res.substr(x+1).c_str()))+0.5);
+    if(aw>1280){ setEnv(L"MCLA_ASPECT_FIX=1"); setEnv(L"MCLA_ASPECT_WIDTH="+std::to_wstring(std::min(aw,4095))); }
+    if(_wtoi(get(L"blur",L"0").c_str())==1)setEnv(L"MCLA_MOTION_BLUR=0");
+    static const wchar_t* kLod[]={L"0.75",L"1.0",L"1.5",L"2.0"}; int lod=_wtoi(get(L"lod",L"1").c_str());
+    if(lod>=0&&lod<4&&lod!=1)setEnv(std::wstring(L"MCLA_LOD_SCALE=")+kLod[lod]);
+    static const wchar_t* kFps[]={L"30",L"60",L"120",L"0"}; int fps=_wtoi(get(L"fps",L"3").c_str());
+    if(fps>=0&&fps<4&&fps!=3)setEnv(std::wstring(L"MCLA_FPS_CAP=")+kFps[fps]);
+    if(_wtoi(get(L"vsync",L"0").c_str())==1)setEnv(L"MCLA_VSYNC=1");
+    if(_wtoi(get(L"gamma",L"0").c_str())==1)setEnv(L"MCLA_NO_GAMMA_LUT=1");
+    std::vector<wchar_t> sec(32768);
+    GetPrivateProfileSectionW(L"env",sec.data(),(DWORD)sec.size(),g_ini.c_str());
+    for(wchar_t* p=sec.data();*p;p+=wcslen(p)+1){
+        std::wstring e=p; size_t c=e.find(L" ;"); if(c!=std::wstring::npos)e.resize(c);
+        while(!e.empty()&&e.back()==L' ')e.pop_back();
+        if(e.empty()||e[0]==L';')continue;
+        setEnv(e);
+    }
+    std::wstring block; for(auto& e:kv){block+=e;block+=L'\0';} block+=L'\0';
+    return block;
+}
+
 static void launchGame() {
-    if (!exists(g_mclaExe)) { MessageBoxW(g_hwnd, (L"mcla.exe not found:\n" + g_mclaExe).c_str(), L"MCLA Launcher", MB_ICONERROR); return; }
+    if (!exists(g_mclaExe)) { MessageBoxW(g_hwnd, (L"mcla.exe not found:\n"+g_mclaExe).c_str(), L"MCLA Launcher", MB_ICONERROR); return; }
     STARTUPINFOW si = { sizeof(si) }; PROCESS_INFORMATION pi = {};
     std::wstring cmd = L"\"" + g_mclaExe + L"\"";
-    if (CreateProcessW(g_mclaExe.c_str(), &cmd[0], nullptr, nullptr, FALSE, 0, nullptr, g_gameDir.c_str(), &si, &pi)) {
+    std::wstring env = buildChildEnv();
+    if (CreateProcessW(g_mclaExe.c_str(), &cmd[0], nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT, (void*)env.c_str(), g_gameDir.c_str(), &si, &pi)) {
         CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
     } else MessageBoxW(g_hwnd, L"Cannot start mcla.exe", L"MCLA Launcher", MB_ICONERROR);
 }
