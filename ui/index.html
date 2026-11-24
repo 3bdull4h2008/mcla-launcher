@@ -2,10 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://mcla.launcher; img-src 'self' data: https://mcla.launcher; style-src 'self' 'unsafe-inline' https://mcla.launcher; font-src 'self' data: https://mcla.launcher; script-src 'self' 'unsafe-inline' https://mcla.launcher; connect-src 'self' https://mcla.launcher" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Midnight Club: Los Angeles — PC Recomp Launcher</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Saira+Semi+Condensed:wght@600;700&display=swap');
+  @font-face { font-family: 'Rajdhani'; font-weight: 600; font-display: swap; src: url('fonts/rajdhani-600.woff2') format('woff2'); }
+  @font-face { font-family: 'Rajdhani'; font-weight: 700; font-display: swap; src: url('fonts/rajdhani-700.woff2') format('woff2'); }
+  @font-face { font-family: 'Saira Semi Condensed'; font-weight: 600; font-display: swap; src: url('fonts/saira-600.woff2') format('woff2'); }
+  @font-face { font-family: 'Saira Semi Condensed'; font-weight: 700; font-display: swap; src: url('fonts/saira-700.woff2') format('woff2'); }
 
   @font-face {
     font-family: 'MCLA_HUD_Local';
@@ -400,19 +404,21 @@
 
   .menu-row.enter-next {
     animation: rowSlideInRight 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: calc(var(--row-idx, 0) * 20ms);
+    animation-delay: calc(min(var(--row-idx, 0), 5) * 12ms);
   }
   .menu-row.enter-prev {
     animation: rowSlideInLeft 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: calc(var(--row-idx, 0) * 20ms);
+    animation-delay: calc(min(var(--row-idx, 0), 5) * 12ms);
   }
   .hud-screen.exiting-next .menu-row,
   .hud-screen.exiting-next .sub-header-bar {
     animation: rowExitLeft 95ms ease-in forwards;
+    animation-delay: 0ms;
   }
   .hud-screen.exiting-prev .menu-row,
   .hud-screen.exiting-prev .sub-header-bar {
     animation: rowExitRight 95ms ease-in forwards;
+    animation-delay: 0ms;
   }
 
   .row-left {
@@ -513,9 +519,36 @@
     color: var(--mcla-yellow);
   }
 
+  .text-value {
+    width: 180px;
+    max-width: 240px;
+    background: rgba(8, 12, 15, 0.72);
+    border: 1px solid rgba(120, 150, 160, 0.55);
+    border-radius: 4px;
+    color: #eaf6f7;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 5px 8px;
+    outline: none;
+    text-transform: uppercase;
+  }
+
+  .text-value:focus,
+  .menu-row.is-selected .text-value {
+    border-color: var(--mcla-cyan);
+    color: var(--mcla-cyan);
+  }
+
   .menu-row.is-selected .cycle-val,
   .menu-row.is-selected .cycle-arrow {
     color: var(--mcla-cyan);
+  }
+
+  .menu-row.is-disabled {
+    opacity: 0.42;
+    pointer-events: none;
   }
 
   .thin-slider-wrap {
@@ -1040,6 +1073,10 @@ function resolveIncomingOptionValue(opt, incomingVal) {
         }
       }
     }
+    if (opt.values.includes('ON') && opt.values.includes('OFF')) {
+      if (incomingVal === true || incomingVal === 1 || incomingVal === '1' || String(incomingVal).toLowerCase() === 'true') return 'ON';
+      if (incomingVal === false || incomingVal === 0 || incomingVal === '0' || String(incomingVal).toLowerCase() === 'false') return 'OFF';
+    }
   }
   if (opt.type === 'slider') {
     const num = Number(incomingVal);
@@ -1324,9 +1361,33 @@ document.getElementById('windowDragStrip').addEventListener('mousedown', (e) => 
   window.MCLALauncherAPI.emitAction('dragWindow', { screenX: e.screenX, screenY: e.screenY });
 });
 
+function cancelKeyListening() {
+  const row = window.__mclaListeningRow;
+  if (!row) return;
+  row.classList.remove('key-listening');
+  const bind = row.querySelector('.key-bind');
+  if (bind && window.__mclaListeningTab && window.__mclaListeningKey) {
+    bind.textContent = activeConfig[window.__mclaListeningTab][window.__mclaListeningKey];
+  }
+  window.__mclaListeningRow = null;
+}
+
+document.addEventListener('mousedown', (e) => {
+  if (window.__mclaListeningRow && !window.__mclaListeningRow.contains(e.target)) cancelKeyListening();
+});
+
 function switchTab(nextTabId, direction) {
   if (nextTabId === currentTab || isTransitioning) return;
+  cancelKeyListening();
   isTransitioning = true;
+
+  // A delayed highlight from a previous screen can overwrite the new screen's
+  // highlight (especially in Controls, where row entry is staggered). Cancel it
+  // before changing screens so it cannot land on the replacement rows.
+  if (window.__mclaHighlightTimer) {
+    clearTimeout(window.__mclaHighlightTimer);
+    window.__mclaHighlightTimer = null;
+  }
 
   const visibleTabs = activeSchema.tabs.filter(t => t.visible !== false);
   const curIdx = visibleTabs.findIndex(t => t.id === currentTab);
@@ -1398,9 +1459,37 @@ function moveSelection(delta) {
   }
 }
 
+function adjustSelected(delta) {
+  const rows = document.getElementById('hudScreen').querySelectorAll('.menu-row');
+  const row = rows[selectedRowIdx];
+  if (!row) return;
+  const tabObj = activeSchema.tabs.find(t => t.id === currentTab) || activeSchema.tabs[0];
+  const opt = (tabObj.options || [])[selectedRowIdx];
+  if (!opt) return;
+  let nextVal;
+  if (opt.type === 'cycle' && !String(opt.key).startsWith('mcla_key_')) {
+    const values = opt.values || [];
+    if (!values.length) return;
+    const cur = values.indexOf(activeConfig[tabObj.id][opt.key]);
+    nextVal = values[(cur + delta + values.length) % values.length];
+  } else if (opt.type === 'slider') {
+    const step = Number(opt.step) || 5;
+    nextVal = Math.max(opt.min, Math.min(opt.max, Number(activeConfig[tabObj.id][opt.key]) + delta * step));
+  } else {
+    return;
+  }
+  activeConfig[tabObj.id][opt.key] = nextVal;
+  updateRowValueUI(row, opt, nextVal);
+  window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: nextVal });
+}
+
 function activateSelectedRow() {
   const rows = document.getElementById('hudScreen').querySelectorAll('.menu-row');
-  if (rows[selectedRowIdx]) rows[selectedRowIdx].click();
+  const row = rows[selectedRowIdx];
+  if (!row) return;
+  const bind = row.querySelector('.key-bind');
+  const text = row.querySelector('.text-value');
+  if (bind) bind.click(); else if (text) text.focus(); else row.click();
 }
 
 function attachRowEvents(row, idx) {
@@ -1463,6 +1552,8 @@ function renderFooterAndShoulders() {
 
 function updateRowValueUI(row, opt, newVal) {
   if (opt.type === 'cycle') {
+    const keyBind = row.querySelector('.key-bind');
+    if (keyBind) { keyBind.textContent = newVal; }
     const valSpan = row.querySelector('.cycle-val');
     if (valSpan) {
       valSpan.textContent = newVal;
@@ -1524,12 +1615,33 @@ function renderScreen(animDir) {
       row.className = 'menu-row' + (animClass ? ' ' + animClass : '');
       row.style.setProperty('--row-idx', idx);
 
-      if (opt.type === 'cycle') {
+      if (opt.type === 'text') {
+        row.innerHTML = `
+          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
+          <div class="row-right"><input class="text-value" type="text" maxlength="${opt.maxLength || 15}" value="${String(val ?? '').replace(/"/g, '&quot;')}" spellcheck="false" /></div>
+        `;
+        const input = row.querySelector('.text-value');
+        const sanitize = (value) => value.replace(/[^ -~]/g, '').replace(/=/g, '').slice(0, opt.maxLength || 15);
+        const commit = () => {
+          const clean = sanitize(input.value) || String(opt.default || 'SWA');
+          input.value = clean;
+          activeConfig[tabObj.id][opt.key] = clean;
+          window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: clean });
+        };
+        input.addEventListener('input', () => {
+          const clean = sanitize(input.value);
+          if (clean !== input.value) input.value = clean;
+          activeConfig[tabObj.id][opt.key] = clean;
+        });
+        input.addEventListener('change', commit);
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+      } else if (opt.type === 'cycle') {
         const isKey = String(opt.key).startsWith('mcla_key_');
         row.innerHTML = `
           <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
           <div class="row-right">
-            ${isKey ? `<button class="key-bind" title="Click then press a key">${val}</button>` : `
+            ${isKey ? `<button class="key-bind" title="Click then press any supported key; click again to cancel">${val}</button>` : `
             <button class="cycle-arrow" data-dir="-1">&lt;</button>
             <span class="cycle-val ${val === 'ON' || val === 'ENABLED' ? 'is-on' : ''}">${val}</span>
             <button class="cycle-arrow" data-dir="1">&gt;</button>`}
@@ -1539,10 +1651,8 @@ function renderScreen(animDir) {
           const bind = row.querySelector('.key-bind');
           bind.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (window.__mclaListeningRow && window.__mclaListeningRow !== row) {
-              window.__mclaListeningRow.classList.remove('key-listening');
-              const prev = window.__mclaListeningRow.querySelector('.key-bind'); if (prev) prev.textContent = activeConfig[window.__mclaListeningTab][window.__mclaListeningKey];
-            }
+            if (window.__mclaListeningRow === row) { cancelKeyListening(); return; }
+            cancelKeyListening();
             row.classList.add('key-listening');
             window.__mclaListeningRow = row;
             window.__mclaListeningTab = tabObj.id;
@@ -1561,7 +1671,8 @@ function renderScreen(animDir) {
         row.querySelectorAll('.cycle-arrow').forEach(b => {
           b.addEventListener('click', (e) => { e.stopPropagation(); cycle(parseInt(b.dataset.dir, 10)); });
         });
-        row.addEventListener('click', () => cycle(1));
+        if (!isKey) row.addEventListener('click', () => cycle(1));
+        // key rows: clicking the row does NOT change the binding; only the bind button does.
       } else if (opt.type === 'slider') {
         const pct = Math.round(((val - opt.min) / (opt.max - opt.min)) * 100);
         row.innerHTML = `
@@ -1598,10 +1709,25 @@ function renderScreen(animDir) {
     });
   }
 
+  if (tabObj.id === 'controls') {
+    const visibleOpts = (tabObj.options || []).filter(o => o.visible !== false);
+    const psIdx = visibleOpts.findIndex(o => o.key === 'MCLA_BTN_PROMPTS_PS');
+    const rows = screen.querySelectorAll('.menu-row');
+    if (psIdx >= 0 && rows[psIdx]) {
+      const enabled = activeConfig.controls.MCLA_BTN_PROMPTS_FIX === 'ON';
+      rows[psIdx].classList.toggle('is-disabled', !enabled);
+      rows[psIdx].querySelectorAll('button').forEach(b => b.disabled = !enabled);
+    }
+  }
+
   renderFooterAndShoulders();
 
+  if (window.__mclaHighlightTimer) clearTimeout(window.__mclaHighlightTimer);
   if (animDir === 'next' || animDir === 'prev') {
-    setTimeout(() => updateHighlightBar(false), 125);
+    window.__mclaHighlightTimer = setTimeout(() => {
+      window.__mclaHighlightTimer = null;
+      updateHighlightBar(false);
+    }, 250);
   } else {
     requestAnimationFrame(() => updateHighlightBar(false));
   }
@@ -1619,18 +1745,33 @@ document.getElementById('btnNextTab').addEventListener('click', () => {
   switchTab(vis[(i + 1) % vis.length].id, 'next');
 });
 
+function keyNameFromEvent(e) {
+  const named = {
+    ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+    Enter: 'Return', NumpadEnter: 'Return', Space: 'Space', Escape: 'Escape',
+    Backspace: 'Backspace', Tab: 'Tab', ShiftLeft: 'LShift', ShiftRight: 'RShift',
+    ControlLeft: 'LCtrl', ControlRight: 'RCtrl', AltLeft: 'LAlt', AltRight: 'RAlt',
+    Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+    Insert: 'Insert', Delete: 'Delete', Pause: 'Pause'
+  };
+  if (named[e.code]) return named[e.code];
+  if (/^F(?:[1-9]|1[0-2])$/.test(e.code || '')) return e.code;
+  if (/^Numpad[0-9]$/.test(e.code || '')) return e.code;
+  if (/^Key[A-Z]$/.test(e.code || '')) return e.code.slice(3);
+  if (/^Digit[0-9]$/.test(e.code || '')) return e.code.slice(5);
+  if (e.key && e.key.length === 1 && /[A-Za-z0-9]/.test(e.key)) return e.key.toUpperCase();
+  return null;
+}
+
 document.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement) {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
   if (window.__mclaListeningRow) {
     e.preventDefault(); e.stopPropagation();
-    if (e.key === 'Escape') {
-      const row = window.__mclaListeningRow;
-      row.classList.remove('key-listening');
-      row.querySelector('.key-bind').textContent = activeConfig[window.__mclaListeningTab][window.__mclaListeningKey];
-      window.__mclaListeningRow = null;
-      return;
-    }
-    const map = { ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right', 'Control': 'LCtrl', 'Shift': 'LShift', 'Enter': 'Return' };
-    const key = map[e.key] || (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    const key = keyNameFromEvent(e);
+    if (!key) { showToast('UNSUPPORTED KEY'); return; }
     const row = window.__mclaListeningRow;
     activeConfig[window.__mclaListeningTab][window.__mclaListeningKey] = key;
     row.querySelector('.key-bind').textContent = key;
@@ -1643,12 +1784,21 @@ document.addEventListener('keydown', (e) => {
     detectedDevice = 'pc';
     renderFooterAndShoulders();
   }
-  if (e.key === 'q' || e.key === 'Q') document.getElementById('btnPrevTab').click();
-  if (e.key === 'e' || e.key === 'E') document.getElementById('btnNextTab').click();
-  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') moveSelection(-1);
-  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') moveSelection(1);
-  if (e.key === 'Enter') activateSelectedRow();
-  if (e.key === 'Escape' && currentTab !== 'main') switchTab('main', 'prev');
+  const k = e.key;
+  const handled = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape','Tab',' ','q','Q','e','E','w','W','s','S'];
+  if (handled.includes(k)) { e.preventDefault(); e.stopPropagation(); }
+  if (k === 'Tab') { moveSelection(e.shiftKey ? -1 : 1); return; }
+  if ((k === 'q' || k === 'Q') && !e.repeat) document.getElementById('btnPrevTab').click();
+  if ((k === 'e' || k === 'E') && !e.repeat) document.getElementById('btnNextTab').click();
+  if (k === 'ArrowUp' || k === 'w' || k === 'W') moveSelection(-1);
+  if (k === 'ArrowDown' || k === 's' || k === 'S') moveSelection(1);
+  if (k === 'ArrowLeft' || k === 'ArrowRight') {
+    const tabObj = activeSchema.tabs.find(t => t.id === currentTab) || activeSchema.tabs[0];
+    if (tabObj.isHome) document.getElementById(k === 'ArrowLeft' ? 'btnPrevTab' : 'btnNextTab').click();
+    else adjustSelected(k === 'ArrowLeft' ? -1 : 1);
+  }
+  if ((k === 'Enter' || k === ' ') && !e.repeat) activateSelectedRow();
+  if (k === 'Escape' && currentTab !== 'main' && !e.repeat) switchTab('main', 'prev');
 });
 
 document.getElementById('btnWinMin').addEventListener('click', () => {
@@ -1663,6 +1813,12 @@ document.getElementById('btnWinClose').addEventListener('click', () => {
 initHeaderTabs();
 syncConnectedGamepads();
 renderScreen('none');
+document.body.tabIndex = -1;
+document.body.focus();
+try {
+  const wantTab = new URLSearchParams(window.location.search).get('tab');
+  if (wantTab && activeSchema.tabs.some(t => t.id === wantTab)) switchTab(wantTab, 'next');
+} catch (e) {}
 
 function emitReadyOnce() {
   if (window.__mclaReadySent) return;
@@ -1679,6 +1835,10 @@ if (window.location.protocol !== 'file:') {
         try {
           const saved = localStorage.getItem(ext.storageKey || activeSchema.storageKey);
           if (saved) window.MCLALauncherAPI.loadConfig(JSON.parse(saved));
+        } catch (e) {}
+        try {
+          const wantTab = new URLSearchParams(window.location.search).get('tab');
+          if (wantTab && activeSchema.tabs.some(t => t.id === wantTab)) switchTab(wantTab, 'next');
         } catch (e) {}
       }
     })

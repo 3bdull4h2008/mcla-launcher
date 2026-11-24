@@ -18,7 +18,7 @@ set "LIBS=user32.lib gdi32.lib ole32.lib dcomp.lib shlwapi.lib shell32.lib advap
 clang-cl /nologo /std:c++17 /EHsc /W3 /DUNICODE /D_UNICODE /DNOMINMAX ^
   %INC% /Fo"out\\" /Fd"out\\" ^
   src\mcla_launcher.cpp ^
-  deps\WebView2Loader.dll.lib /link /OUT:out\mcla_launcher.exe %LIBS%
+  deps\WebView2Loader.dll.lib /link /OUT:out\mcla_launcher.exe /MANIFEST:EMBED /MANIFESTINPUT:src\mcla_launcher.manifest %LIBS%
 if errorlevel 1 (
   echo BUILD FAILED
   exit /b 3
