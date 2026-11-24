@@ -401,8 +401,8 @@
       "title": "CONTROLS",
       "icon": "controls",
       "visible": true,
-      "subHeaderLeft": "< MCLA.TOML // CONTROLS >",
-      "subHeaderRight": "FUNCTION KEYMAP",
+      "subHeaderLeft": "< KEYMAP // EACH KEY = ONE GAMEPAD BUTTON >",
+      "subHeaderRight": "GUEST DECIDES BY SCREEN",
       "options": [
         {
           "key": "mcla_button_prompts",
@@ -475,7 +475,7 @@
         },
         {
           "key": "mcla_key_throttle",
-          "label": "[DRIVING] THROTTLE",
+          "label": "RT - RIGHT TRIGGER",
           "type": "cycle",
           "values": [
             "O",
@@ -513,7 +513,7 @@
         },
         {
           "key": "mcla_key_brake",
-          "label": "[DRIVING] BRAKE",
+          "label": "LT - LEFT TRIGGER",
           "type": "cycle",
           "values": [
             "O",
@@ -551,7 +551,7 @@
         },
         {
           "key": "mcla_key_steer_left",
-          "label": "[DRIVING] STEER LEFT",
+          "label": "LEFT STICK LEFT",
           "type": "cycle",
           "values": [
             "O",
@@ -589,7 +589,7 @@
         },
         {
           "key": "mcla_key_steer_right",
-          "label": "[DRIVING] STEER RIGHT",
+          "label": "LEFT STICK RIGHT",
           "type": "cycle",
           "values": [
             "O",
@@ -627,7 +627,7 @@
         },
         {
           "key": "mcla_key_x",
-          "label": "[DRIVING] HANDBRAKE",
+          "label": "X - WEST BUTTON",
           "type": "cycle",
           "values": [
             "O",
@@ -665,7 +665,7 @@
         },
         {
           "key": "mcla_key_right_shoulder",
-          "label": "[DRIVING] NITRO / BOOST",
+          "label": "RB - RIGHT SHOULDER",
           "type": "cycle",
           "values": [
             "O",
@@ -703,7 +703,7 @@
         },
         {
           "key": "mcla_key_left_thumb",
-          "label": "[DRIVING] HORN",
+          "label": "LS - LEFT STICK CLICK",
           "type": "cycle",
           "values": [
             "O",
@@ -741,7 +741,7 @@
         },
         {
           "key": "mcla_key_dpad_up",
-          "label": "[MENU] MENU UP",
+          "label": "D-PAD UP",
           "type": "cycle",
           "values": [
             "O",
@@ -779,7 +779,7 @@
         },
         {
           "key": "mcla_key_dpad_down",
-          "label": "[MENU] MENU DOWN",
+          "label": "D-PAD DOWN",
           "type": "cycle",
           "values": [
             "O",
@@ -817,7 +817,7 @@
         },
         {
           "key": "mcla_key_dpad_left",
-          "label": "[MENU] MENU LEFT",
+          "label": "D-PAD LEFT",
           "type": "cycle",
           "values": [
             "O",
@@ -855,7 +855,7 @@
         },
         {
           "key": "mcla_key_dpad_right",
-          "label": "[MENU] MENU RIGHT",
+          "label": "D-PAD RIGHT",
           "type": "cycle",
           "values": [
             "O",
@@ -893,7 +893,7 @@
         },
         {
           "key": "mcla_key_a",
-          "label": "[MENU] CONFIRM / SELECT",
+          "label": "A - SOUTH BUTTON",
           "type": "cycle",
           "values": [
             "O",
@@ -931,7 +931,7 @@
         },
         {
           "key": "mcla_key_b",
-          "label": "[MENU] CANCEL / BACK",
+          "label": "B - EAST BUTTON",
           "type": "cycle",
           "values": [
             "O",
@@ -969,7 +969,7 @@
         },
         {
           "key": "mcla_key_start",
-          "label": "[MENU] PAUSE MENU",
+          "label": "START BUTTON",
           "type": "cycle",
           "values": [
             "O",
@@ -1007,7 +1007,7 @@
         },
         {
           "key": "mcla_key_back",
-          "label": "[MENU] RESET CAR",
+          "label": "BACK BUTTON",
           "type": "cycle",
           "values": [
             "O",
@@ -1045,7 +1045,7 @@
         },
         {
           "key": "mcla_key_y",
-          "label": "[CAMERA] CAMERA (CYCLE)",
+          "label": "Y - NORTH BUTTON",
           "type": "cycle",
           "values": [
             "O",
@@ -1083,7 +1083,7 @@
         },
         {
           "key": "mcla_key_right_thumb",
-          "label": "[CAMERA] CAMERA TOGGLE",
+          "label": "RS - RIGHT STICK CLICK",
           "type": "cycle",
           "values": [
             "O",
@@ -1121,7 +1121,7 @@
         },
         {
           "key": "mcla_key_ry_up",
-          "label": "[CAMERA] LOOK UP",
+          "label": "RIGHT STICK UP",
           "type": "cycle",
           "values": [
             "O",
@@ -1159,7 +1159,7 @@
         },
         {
           "key": "mcla_key_ry_down",
-          "label": "[CAMERA] LOOK DOWN",
+          "label": "RIGHT STICK DOWN",
           "type": "cycle",
           "values": [
             "O",
@@ -1197,7 +1197,7 @@
         },
         {
           "key": "mcla_key_rx_left",
-          "label": "[CAMERA] LOOK LEFT",
+          "label": "RIGHT STICK LEFT",
           "type": "cycle",
           "values": [
             "O",
@@ -1235,7 +1235,7 @@
         },
         {
           "key": "mcla_key_rx_right",
-          "label": "[CAMERA] LOOK RIGHT",
+          "label": "RIGHT STICK RIGHT",
           "type": "cycle",
           "values": [
             "O",
@@ -1273,7 +1273,7 @@
         },
         {
           "key": "mcla_key_left_shoulder",
-          "label": "[EXTRA PADS] LEFT SHOULDER",
+          "label": "LB - LEFT SHOULDER",
           "type": "cycle",
           "values": [
             "O",
@@ -1311,7 +1311,7 @@
         },
         {
           "key": "mcla_key_lt",
-          "label": "[EXTRA PADS] LEFT TRIGGER",
+          "label": "LT - LEFT TRIGGER (AXIS)",
           "type": "cycle",
           "values": [
             "O",
@@ -1349,7 +1349,7 @@
         },
         {
           "key": "mcla_key_rt",
-          "label": "[EXTRA PADS] RIGHT TRIGGER",
+          "label": "RT - RIGHT TRIGGER (AXIS)",
           "type": "cycle",
           "values": [
             "O",
