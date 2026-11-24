@@ -1,4 +1,4 @@
-// mcla_launcher.cpp — standalone WebView2 launcher host for MCLA PC (Windows x64).
+﻿// mcla_launcher.cpp ΓÇö standalone WebView2 launcher host for MCLA PC (Windows x64).
 //
 // TRUE per-pixel-alpha transparency via DirectComposition + WS_EX_NOREDIRECTIONBITMAP.
 // This is the only path that gives WebView2 both see-through pixels AND working input:
@@ -228,7 +228,7 @@ struct ControllerHandler : public ICoreWebView2CreateCoreWebView2ControllerCompl
         if (FAILED(hr) || !controller) { MessageBoxW(g_hwnd, L"WebView2 controller creation failed", L"MCLA Launcher", MB_ICONERROR); return S_OK; }
         g_controller = controller;
         g_controller->get_CoreWebView2(&g_web);
-        // TRUE transparent background (ARGB 0) — the core of per-pixel alpha.
+        // TRUE transparent background (ARGB 0) ΓÇö the core of per-pixel alpha.
         ComPtr<ICoreWebView2Controller3> c3;
         if (SUCCEEDED(g_controller.As(&c3))) c3->put_DefaultBackgroundColor({ 0, 0, 0, 0 });
         g_web->add_WebMessageReceived(new MsgHandler(), nullptr);
@@ -296,10 +296,13 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
     // WS_EX_NOREDIRECTIONBITMAP: DWM does not give the window a normal redirection surface;
     // WebView2's DirectComposition swap chain supplies the pixels, with per-pixel alpha.
     g_hwnd = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_LAYERED, wc.lpszClassName,
-                             L"Midnight Club: Los Angeles — Launcher", WS_POPUP | WS_VISIBLE,
+                             L"Midnight Club: Los Angeles ΓÇö Launcher", WS_POPUP | WS_VISIBLE,
                              (GetSystemMetrics(SM_CXSCREEN) - WIN_W) / 2,
                              (GetSystemMetrics(SM_CYSCREEN) - WIN_H) / 2, WIN_W, WIN_H,
                              nullptr, nullptr, hi, nullptr);
+    // WS_EX_NOREDIRECTIONBITMAP windows have no redirection surface, so Windows
+    // won't hit-test them. Give the window an explicit region so clicks land here.
+    { HRGN rgn = CreateRectRgn(0,0,WIN_W,WIN_H); SetWindowRgn(g_hwnd,rgn,TRUE); }
     ShowWindow(g_hwnd, SW_SHOW); UpdateWindow(g_hwnd);
 
     // WebView2 with user-data folder next to exe.
