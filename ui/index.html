@@ -304,8 +304,11 @@
     height: 268px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
-  }
+    overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--mcla-bezel-border) transparent;
+}
 
   .row-highlight-bar {
     position: absolute;
@@ -370,7 +373,8 @@
     100% { opacity: 0; transform: translateX(44px); }
   }
 
-  .menu-row {
+  .menu-row { flex: 0 0 auto;
+
     position: relative;
     z-index: 2;
     display: flex;
@@ -619,6 +623,12 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
+
+.hud-screen::-webkit-scrollbar { width: 6px; }
+.hud-screen::-webkit-scrollbar-track { background: transparent; }
+.hud-screen::-webkit-scrollbar-thumb { background: var(--mcla-bezel-border); border-radius: 3px; }
+.menu-row.key-listening .key-bind { color: var(--mcla-yellow) !important; animation: keyListenPulse 0.8s ease-in-out infinite alternate; }
+@keyframes keyListenPulse { from { opacity: 1; } to { opacity: 0.45; } }
 </style>
 </head>
 <body>
@@ -1382,6 +1392,10 @@ function moveSelection(delta) {
   if (!rows.length) return;
   selectedRowIdx = (selectedRowIdx + delta + rows.length) % rows.length;
   updateHighlightBar(true);
+  const sel = rows[selectedRowIdx];
+  if (sel && typeof sel.scrollIntoView === 'function') {
+    sel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
 }
 
 function activateSelectedRow() {
@@ -1511,14 +1525,31 @@ function renderScreen(animDir) {
       row.style.setProperty('--row-idx', idx);
 
       if (opt.type === 'cycle') {
+        const isKey = String(opt.key).startsWith('mcla_key_');
         row.innerHTML = `
           <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
           <div class="row-right">
+            ${isKey ? `<button class="key-bind" title="Click then press a key">${val}</button>` : `
             <button class="cycle-arrow" data-dir="-1">&lt;</button>
             <span class="cycle-val ${val === 'ON' || val === 'ENABLED' ? 'is-on' : ''}">${val}</span>
-            <button class="cycle-arrow" data-dir="1">&gt;</button>
+            <button class="cycle-arrow" data-dir="1">&gt;</button>`}
           </div>
         `;
+        if (isKey) {
+          const bind = row.querySelector('.key-bind');
+          bind.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (window.__mclaListeningRow && window.__mclaListeningRow !== row) {
+              window.__mclaListeningRow.classList.remove('key-listening');
+              const prev = window.__mclaListeningRow.querySelector('.key-bind'); if (prev) prev.textContent = activeConfig[window.__mclaListeningTab][window.__mclaListeningKey];
+            }
+            row.classList.add('key-listening');
+            window.__mclaListeningRow = row;
+            window.__mclaListeningTab = tabObj.id;
+            window.__mclaListeningKey = opt.key;
+            bind.textContent = 'PRESS KEY...';
+          });
+        }
         const cycle = (dir) => {
           const cur = opt.values.indexOf(activeConfig[tabObj.id][opt.key]);
           const nxt = (cur + dir + opt.values.length) % opt.values.length;
@@ -1589,6 +1620,25 @@ document.getElementById('btnNextTab').addEventListener('click', () => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (window.__mclaListeningRow) {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') {
+      const row = window.__mclaListeningRow;
+      row.classList.remove('key-listening');
+      row.querySelector('.key-bind').textContent = activeConfig[window.__mclaListeningTab][window.__mclaListeningKey];
+      window.__mclaListeningRow = null;
+      return;
+    }
+    const map = { ' ': 'Space', 'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right', 'Control': 'LCtrl', 'Shift': 'LShift', 'Enter': 'Return' };
+    const key = map[e.key] || (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+    const row = window.__mclaListeningRow;
+    activeConfig[window.__mclaListeningTab][window.__mclaListeningKey] = key;
+    row.querySelector('.key-bind').textContent = key;
+    row.classList.remove('key-listening');
+    window.__mclaListeningRow = null;
+    window.MCLALauncherAPI.emitAction('optionChanged', { tab: window.__mclaListeningTab, key: window.__mclaListeningKey, value: key });
+    return;
+  }
   if (detectedDevice !== 'pc' && (!activeConfig.controls || activeConfig.controls.prompts === 'AUTO DETECT')) {
     detectedDevice = 'pc';
     renderFooterAndShoulders();
