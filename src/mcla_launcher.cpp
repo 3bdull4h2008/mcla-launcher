@@ -1,44 +1,39 @@
-﻿// mcla_launcher.cpp - standalone WebView2 launcher host for MCLA PC (Windows x64).
-//
-// TRUE per-pixel-alpha transparency via DirectComposition + WS_EX_NOREDIRECTIONBITMAP.
-// This is the only path that gives WebView2 both see-through pixels AND working input:
-//  - WinForms TransparencyKey : magenta renders visible (WebView2 child HWND ignores parent key).
-//  - WPF AllowsTransparency   : transparent but WebView2 input is dead (measured).
-//  - Here: the top-level window has no redirection bitmap; DWM composes a DirectComposition
-//    visual tree whose content comes from WebView2's own swap chain with transparent clear color.
-//
-// Build:  build.bat   (clang-cl + user32/ole32/dcomp/shlwapi + WebView2Loader.dll.lib)
-// Output: mcla_launcher.exe   (copy to <mcla-pc>\build\mcla_launcher.exe)
-// Self-check: mcla_launcher.exe --selftest   (exit code 0 = ini/toml writer ok)
-// NEVER touches build/mcla.exe.
+﻿
+
 #define NOMINMAX
 #define UNICODE
 #define _UNICODE
 #include <windows.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
 #include <dcomp.h>
 #include <wrl.h>
 #include <wrl/client.h>
 #include <shlwapi.h>
 #include <shlobj.h>
+#include <commdlg.h>
 #include <tlhelp32.h>
+#include <wincrypt.h>
 #include <string>
 #include <vector>
 #include <sstream>
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <ctime>
+#include <filesystem>
 #include <map>
 #include <set>
 #include "wv2/WebView2.h"
+#include "generated_settings_contract.h"
 
 using Microsoft::WRL::ComPtr;
 using Microsoft::WRL::Callback;
 
-// ------------------------------- config -------------------------------------------------------
 static const int WIN_W = 650, WIN_H = 446;
-static int    g_w = WIN_W, g_h = WIN_H;   // DPI-scaled window size in physical pixels
+static int    g_w = WIN_W, g_h = WIN_H;
 static UINT   g_dpi = 96;
-static double g_zoom = 1.0;               // CSS layout is already 650x446; do not double-scale it
+static double g_zoom = 1.0;
 static int    g_exit = 0;
 static HWND       g_hwnd = nullptr;
 static std::wstring g_dir, g_uiDir, g_gameDir, g_cacheDir, g_mclaExe, g_ini;
@@ -46,8 +41,19 @@ static ComPtr<ICoreWebView2Controller> g_controller;
 static ComPtr<ICoreWebView2>           g_web;
 static const wchar_t kOrigin[] = L"https://mcla.launcher/";
 static const wchar_t kRuntimeUrl[] = L"https://go.microsoft.com/fwlink/p/?LinkId=2124703";
+static const char kInstallVersion[] = "1.0.0-rc1";
+static const wchar_t kReadyRel[] = L"\\cache\\mcla_ready.json";
+static bool g_installMode = false;
+static std::wstring g_installSource;
+static std::wstring g_isoPath;
+static std::string slurp(const std::wstring& p);
+static void eval(const std::string& js);
+static void cleanupDevFiles(const std::wstring& gameDir);
+static std::string normalizeLang(const std::string& v) {
+    if (v == "ar" || v == "fr" || v == "es" || v == "de" || v == "it") return v;
+    return "en";
+}
 
-// ------------------------------- helpers -------------------------------------------------------
 static std::wstring dirOf(const std::wstring& p) {
     auto i = p.find_last_of(L"\\/");
     return i == std::wstring::npos ? L"" : p.substr(0, i);
@@ -61,7 +67,7 @@ static std::wstring widen(const std::string& s) {
     int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), nullptr, 0);
     std::wstring w(n, L'\0'); MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), &w[0], n); return w;
 }
-// Minimal JSON string escape (for pushing mcla.toml into JS).
+
 static std::string jesc(const std::string& s) {
     std::string o; for (char c : s) {
         switch (c) { case '"': o += "\\\""; break; case '\\': o += "\\\\"; break;
@@ -70,7 +76,6 @@ static std::string jesc(const std::string& s) {
     } return o;
 }
 
-// WebView2 missing or broken: offer the runtime download and quit instead of a blank window.
 static void wv2Fail(HRESULT hr) {
     wchar_t m[512];
     swprintf_s(m, L"The WebView2 Runtime could not be started (0x%08X).\nDownload it from:\n%s\n\nOpen the download page now?", (unsigned)hr, kRuntimeUrl);
@@ -79,41 +84,111 @@ static void wv2Fail(HRESULT hr) {
     g_exit = 1; PostMessageW(g_hwnd, WM_CLOSE, 0, 0);
 }
 
-// ------------------------------- mcla.toml <-> JS ---------------------------------------------
 static std::string tomlUnquote(const std::string& v) {
     std::string o; for (size_t i = 1; i + 1 < v.size(); ++i) { if (v[i] == '\\' && i + 2 < v.size()) i++; o += v[i]; } return o;
 }
 static std::string tomlQuote(const std::string& v) {
     std::string o = "\""; for (char c : v) { if (c == '"' || c == '\\') o += '\\'; o += c; } return o + "\"";
 }
-// Read cache/mcla.toml into a flat JSON object with key: value pairs for loadConfig().
-static std::string tomlToJson() {
-    std::ifstream f(g_cacheDir + L"\\mcla.toml");
-    if (!f.good()) return "{}";
-    std::string line, out = "{"; bool first = true;
+
+static void parseTomlIntoMap(const std::wstring& path, std::map<std::string, std::string>& jsonMap) {
+    std::ifstream f(path);
+    if (!f.good()) return;
+    std::string line;
     while (std::getline(f, line)) {
-        size_t s = line.find_first_not_of(" \t\r\n");
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
+        size_t s = line.find_first_not_of(" \t");
         if (s == std::string::npos || line[s] == '#' || line[s] == '[') continue;
         size_t eq = line.find('=', s); if (eq == std::string::npos) continue;
-        std::string k = line.substr(s, eq - s); while (!k.empty() && k.back() == ' ') k.pop_back();
+        std::string k = line.substr(s, eq - s);
+        while (!k.empty() && (k.back() == ' ' || k.back() == '\t')) k.pop_back();
         std::string v = line.substr(eq + 1);
-        v.erase(0, v.find_first_not_of(" \t")); while (!v.empty() && (v.back() == ' ' || v.back() == '\r')) v.pop_back();
+        size_t vs = v.find_first_not_of(" \t");
+        if (vs == std::string::npos) v.clear(); else v.erase(0, vs);
+        while (!v.empty() && (v.back() == ' ' || v.back() == '\t')) v.pop_back();
         bool quoted = v.size() >= 2 && v.front() == '"' && v.back() == '"';
         if (quoted) v = tomlUnquote(v);
-        if (!first) out += ",";
-        out += "\"" + jesc(k) + "\":";
-        // number only if strtod consumes everything; x/n/i reject hex, nan and inf
+
         char* end = nullptr; double d = strtod(v.c_str(), &end);
-        bool isNum = !quoted && !v.empty() && !isspace((unsigned char)v[0]) && v.find_first_of("xXnNiI") == std::string::npos && *end == 0 && std::isfinite(d);
-        if (isNum) { char b[40]; snprintf(b, sizeof b, "%.15g", d); out += b; }
-        else if (!quoted && (v == "true" || v == "false")) out += v;
-        else out += "\"" + jesc(v) + "\"";
-        first = false;
+        bool isNum = !quoted && !v.empty() && !isspace((unsigned char)v[0]) &&
+                     v.find_first_of("xXnNiI") == std::string::npos && *end == 0 && std::isfinite(d);
+        std::string valStr;
+        if (isNum) { char b[40]; snprintf(b, sizeof b, "%.15g", d); valStr = b; }
+        else if (!quoted && (v == "true" || v == "false")) valStr = v;
+        else valStr = "\"" + jesc(v) + "\"";
+        jsonMap[k] = valStr;
     }
-    out += "}"; return out;
 }
 
-// Minimal JSON parser for the launcher message (objects, arrays, strings, scalars).
+static std::string tomlToJson(const std::wstring& gameDir = g_gameDir, const std::wstring& cacheDir = g_cacheDir, const std::wstring& iniPath = g_ini) {
+    std::map<std::string, std::string> jsonMap;
+
+    if (!gameDir.empty()) parseTomlIntoMap(gameDir + L"\\mcla.toml", jsonMap);
+    if (!cacheDir.empty()) parseTomlIntoMap(cacheDir + L"\\mcla.toml", jsonMap);
+
+    std::string winW, winH;
+    if (!iniPath.empty() && exists(iniPath)) {
+        std::vector<wchar_t> sec(32768);
+        GetPrivateProfileSectionW(L"env", sec.data(), (DWORD)sec.size(), iniPath.c_str());
+        for (wchar_t* p = sec.data(); *p; p += wcslen(p) + 1) {
+            std::wstring we = p;
+            size_t c = we.find(L" ;"); if (c != std::wstring::npos) we.resize(c);
+            while (!we.empty() && (we.back() == L' ' || we.back() == L'\r')) we.pop_back();
+            if (we.empty() || we[0] == L';') continue;
+            size_t eq = we.find(L'='); if (eq == std::wstring::npos || eq == 0) continue;
+            std::string k = narrow(we.substr(0, eq));
+            std::string v = narrow(we.substr(eq + 1));
+            while (!k.empty() && k.back() == ' ') k.pop_back();
+            size_t vs = v.find_first_not_of(" \t");
+            if (vs == std::string::npos) v.clear(); else v.erase(0, vs);
+
+            if (k == "MCLA_WINDOW_W") winW = v;
+            else if (k == "MCLA_WINDOW_H") winH = v;
+
+            std::string cvar;
+            for (const auto& m : kGeneratedEnvToCvarMap) {
+                if (m.first == k) { cvar = m.second; break; }
+            }
+            if (cvar.empty() && k == "MCLA_ASPECT_RATIO") cvar = "mcla_aspect_ratio";
+
+            char* end = nullptr; double d = strtod(v.c_str(), &end);
+            bool isNum = !v.empty() && !isspace((unsigned char)v[0]) &&
+                         v.find_first_of("xXnNiI") == std::string::npos && *end == 0 && std::isfinite(d);
+            std::string valStr;
+            if (isNum) { char b[40]; snprintf(b, sizeof b, "%.15g", d); valStr = b; }
+            else if (v == "true" || v == "false") valStr = v;
+            else valStr = "\"" + jesc(v) + "\"";
+
+            if (jsonMap.find(k) == jsonMap.end()) jsonMap[k] = valStr;
+            if (!cvar.empty() && jsonMap.find(cvar) == jsonMap.end()) jsonMap[cvar] = valStr;
+        }
+        if (!winW.empty() && !winH.empty() && jsonMap.find("resolution_preset") == jsonMap.end()) {
+            jsonMap["resolution_preset"] = "\"" + jesc(winW + "x" + winH) + "\"";
+        }
+        wchar_t resBuf[64] = {};
+        GetPrivateProfileStringW(L"launcher", L"res", L"", resBuf, 64, iniPath.c_str());
+        if (resBuf[0] && jsonMap.find("resolution_preset") == jsonMap.end()) {
+            jsonMap["resolution_preset"] = "\"" + jesc(narrow(resBuf)) + "\"";
+        }
+    }
+    if (jsonMap.find("display_mode") == jsonMap.end()) {
+        auto it = jsonMap.find("fullscreen");
+        if (it != jsonMap.end()) {
+            const bool isFs = (it->second == "true" || it->second == "1");
+            jsonMap["display_mode"] = isFs ? "\"fullscreen\"" : "\"windowed\"";
+        }
+    }
+
+    std::string out = "{"; bool first = true;
+    for (const auto& kv : jsonMap) {
+        if (!first) out += ",";
+        out += "\"" + jesc(kv.first) + "\":" + kv.second;
+        first = false;
+    }
+    out += "}";
+    return out;
+}
+
 struct JVal { enum T{STR,NUM,BOOL,OBJ,ARR,NUL} type=NUL; std::string s; std::vector<std::pair<std::string,JVal>> obj; };
 static size_t jskip(const std::string& j,size_t i){ while(i<j.size()&&isspace((unsigned char)j[i]))i++; return i; }
 static void putUtf8(std::string& o,unsigned c){
@@ -129,7 +204,7 @@ static bool hex4(const std::string& j,size_t i,unsigned& v){
     return true;
 }
 static std::string jstr(const std::string& j,size_t& i){
-    i++; std::string o;   // j[i]==quote on entry
+    i++; std::string o;
     while(i<j.size()&&j[i]!='"'){
         if(j[i]!='\\'||i+1>=j.size()){ o+=j[i++]; continue; }
         char c=j[++i]; i++;
@@ -156,7 +231,6 @@ static JVal jparse(const std::string& j,size_t& i,int depth=0){
                 if(j[i]!='"'){i++;continue;}
                 key=jstr(j,i);
                 i=jskip(j,i); if(i<j.size()&&j[i]==':')i++;
-                // map UI key -> real cvar/env name
                 if(key=="prompts")key="mcla_button_prompts";
                 else if(key=="vibration")key="mcla_vibration";
                 else if(key=="deadzone")key="mcla_left_stick_deadzone";
@@ -179,7 +253,6 @@ static const JVal* jget(const JVal& o,const char* k){
     return nullptr;
 }
 
-// Keys: [A-Za-z0-9_.-] only. Values: no CR, LF, '=' or NUL (they would split or forge lines).
 static bool okKey(const std::string& k){
     if(k.empty())return false;
     for(char c:k) if(!isalnum((unsigned char)c)&&c!='_'&&c!='-'&&c!='.')return false;
@@ -193,80 +266,333 @@ static std::string tomlKeyOf(const std::string& line){
     return k;
 }
 
-// payload.extra.toml (section -> key -> value): _env keys go to the ini [env] section (allowlist),
-// everything else is merged into mcla.toml keeping the other lines.
-static void writeToml(const JVal& root,const std::wstring& ini,const std::wstring& tomlPath){
-    if(root.type!=JVal::OBJ)return;
-    static const std::set<std::string> kEnvOk={
-        "MCLA_PROFILE_NAME","MCLA_WINDOW_W","MCLA_WINDOW_H","MCLA_RENDER_SCALE","MCLA_DISPLAY_MODE","MCLA_VSYNC",
-        "MCLA_ASPECT_FIX","MCLA_ASPECT_WIDTH","MCLA_MOTION_BLUR","MCLA_LOD_SCALE","MCLA_FPS_CAP","MCLA_NO_GAMMA_LUT",
-        "MCLA_NO_SIGNIN","MCLA_NO_RENDER_2STAGE","MCLA_FLOW_LOD","MCLA_FIXED_SEED","MCLA_FIXED_TOD","MCLA_LOG_LEVEL",
-        "MCLA_SMALL_FS_SWAP","MCLA_BTN_PROMPTS_FIX","MCLA_BTN_PROMPTS_PS","MCLA_NO_RESOLVED_MIPS",
-        "MCLA_NO_CPUEXPAND_MIPS","MCLA_NO_OCCLUSION_QUERY","MCLA_NO_MT_BURSTS","MCLA_MT_PREP",
-        "MCLA_AUDIO_GAIN","MCLA_NO_ADAPTIVE_AUDIO","MCLA_AMBIENT_OCCLUSION","MCLA_SHADOWS",
-        "MCLA_FLOW_LOD"};
-    std::vector<std::pair<std::string,std::string>> sets, envSets;   // sets: key + full toml line
-    for(auto& sec:root.obj){
-        if(sec.second.type!=JVal::OBJ)continue;
-        for(auto& kv:sec.second.obj){
-            if(kv.second.type==JVal::OBJ||kv.second.type==JVal::ARR)continue;
-            std::string val=kv.second.s; bool str=kv.second.type==JVal::STR;
-            if(val=="true")val="1"; else if(val=="false")val="0";
-            if(kv.first=="mcla_adaptive_triggers")continue;  // setting does not exist in the game
-            if(val=="null"||val.empty()){
-                // UI produced a null string for a slider: use the CVar default.
-                static const std::map<std::string,std::string> defs={
+static bool writeFileAtomic(const std::wstring& path, const std::string& content) {
+    const std::wstring tmp = path + L".tmp";
+    HANDLE h = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    const BOOL ok = content.empty() ? TRUE : WriteFile(h, content.data(), (DWORD)content.size(), &written, nullptr);
+    const BOOL flushed = ok ? FlushFileBuffers(h) : FALSE;
+    CloseHandle(h);
+    if (!ok || !flushed || written != (DWORD)content.size()) {
+        DeleteFileW(tmp.c_str());
+        return false;
+    }
+    if (!MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(tmp.c_str());
+        return false;
+    }
+    return true;
+}
+
+static bool sha256OfFile(const std::wstring& path, std::string& hex) {
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    HCRYPTPROV prov = 0;
+    if (!CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) { CloseHandle(h); return false; }
+    HCRYPTHASH hash = 0;
+    BOOL ok = CryptCreateHash(prov, CALG_SHA_256, 0, 0, &hash);
+    BYTE buf[65536]; DWORD n = 0;
+    while (ok && ReadFile(h, buf, sizeof buf, &n, nullptr) && n) ok = CryptHashData(hash, buf, n, 0);
+    BYTE dig[32]; DWORD dl = sizeof dig;
+    if (ok) ok = CryptGetHashParam(hash, HP_HASHVAL, dig, &dl, 0);
+    if (hash) CryptDestroyHash(hash);
+    if (prov) CryptReleaseContext(prov, 0);
+    CloseHandle(h);
+    if (!ok || dl != 32) return false;
+    static const char* hx = "0123456789abcdef";
+    char out[65];
+    for (int i = 0; i < 32; ++i) { out[i * 2] = hx[dig[i] >> 4]; out[i * 2 + 1] = hx[dig[i] & 15]; }
+    out[64] = 0; hex = out; return true;
+}
+
+static void dirFingerprint(const std::wstring& dir, unsigned long long& count, unsigned long long& bytes) {
+    std::wstring pattern = dir + L"\\*";
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
+        std::wstring p = dir + L"\\" + fd.cFileName;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) dirFingerprint(p, count, bytes);
+        else { ++count; bytes += ((unsigned long long)fd.nFileSizeHigh << 32) | fd.nFileSizeLow; }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+struct InstallCheck {
+    bool complete = false;
+    bool markerValid = false;
+    std::string markerVersion;
+    std::vector<std::string> missing;
+    std::string hashesJson;
+};
+
+static InstallCheck checkInstall(const std::wstring& gameDir, const std::wstring& uiDir) {
+    InstallCheck r;
+    (void)uiDir;
+    const std::wstring keyPaths[] = { gameDir + L"\\mcla.exe", gameDir + L"\\cache\\mcla.toml" };
+    const char* keyNames[] = { "mcla.exe", "cache/mcla.toml" };
+    std::string hashes = "{";
+    size_t hashCount = 0;
+    bool allFiles = true;
+    for (size_t i = 0; i < 2; ++i) {
+        std::string hx;
+        if (!sha256OfFile(keyPaths[i], hx)) { r.missing.push_back(keyNames[i]); allFiles = false; continue; }
+        if (hashCount++) hashes += ",";
+        hashes += "\"" + std::string(keyNames[i]) + "\":\"" + hx + "\"";
+    }
+    const std::wstring dirs[] = { gameDir + L"\\content", gameDir + L"\\game_data" };
+    const char* dirNames[] = { "content", "game_data" };
+    for (size_t i = 0; i < 2; ++i) {
+        unsigned long long n = 0, b = 0;
+        dirFingerprint(dirs[i], n, b);
+        if (!n) { r.missing.push_back(dirNames[i]); allFiles = false; }
+        if (hashCount++) hashes += ",";
+        hashes += "\"" + std::string(dirNames[i]) + "\":\"" + std::to_string(n) + ":" + std::to_string(b) + "\"";
+    }
+    hashes += "}";
+    r.hashesJson = hashes;
+    r.complete = allFiles;
+    const std::wstring marker = gameDir + kReadyRel;
+    if (!exists(marker)) { r.missing.push_back("cache/mcla_ready.json"); return r; }
+    size_t p = 0; JVal root = jparse(slurp(marker), p);
+    const JVal* v = jget(root, "version");
+    const JVal* hs = jget(root, "hashes");
+    if (!v || v->type != JVal::STR || v->s != kInstallVersion) { r.missing.push_back("version mismatch"); return r; }
+    r.markerVersion = v->s;
+    bool same = true;
+    size_t hp = 0; JVal expected = jparse(hashes, hp);
+    for (const auto& kv : expected.obj) {
+        const JVal* got = hs ? jget(*hs, kv.first.c_str()) : nullptr;
+        if (!got || got->type != JVal::STR || got->s != kv.second.s) { same = false; r.missing.push_back("hash mismatch: " + kv.first); }
+    }
+    r.markerValid = allFiles && same;
+    return r;
+}
+
+static bool writeReadyMarker(const std::wstring& gameDir, const std::wstring& uiDir) {
+    InstallCheck c = checkInstall(gameDir, uiDir);
+    if (!c.complete) return false;
+    char stamp[32]; time_t now = time(nullptr);
+    strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+    const std::string body = "{\"version\":\"" + std::string(kInstallVersion) + "\",\"created\":\"" + stamp + "\",\"hashes\":" + c.hashesJson + "}\r\n";
+    return writeFileAtomic(gameDir + kReadyRel, body);
+}
+
+static std::string installStatusJson(const std::wstring& gameDir, const std::wstring& uiDir) {
+    InstallCheck c = checkInstall(gameDir, uiDir);
+    std::string s = "{\"ready\":" + std::string(c.markerValid ? "true" : "false") + ",\"complete\":" + std::string(c.complete ? "true" : "false") + ",\"version\":\"" + kInstallVersion + "\",\"missing\":[";
+    for (size_t i = 0; i < c.missing.size(); ++i) { if (i) s += ","; s += "\"" + jesc(c.missing[i]) + "\""; }
+    s += "]}";
+    return s;
+}
+
+static bool copyTree(const std::wstring& from, const std::wstring& to, std::string& error, int& files) {
+    std::wstring pattern = from + L"\\*";
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) { error = "source folder not found: " + narrow(from); return false; }
+    CreateDirectoryW(to.c_str(), nullptr);
+    bool ok = true;
+    do {
+        if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
+        std::wstring src = from + L"\\" + fd.cFileName, dst = to + L"\\" + fd.cFileName;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            ok = copyTree(src, dst, error, files);
+        } else {
+            if (!CopyFileW(src.c_str(), dst.c_str(), FALSE)) { error = "copy failed: " + narrow(src); ok = false; }
+            else ++files;
+        }
+        if (!ok) break;
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return ok;
+}
+
+static bool runInstall(const std::wstring& src, const std::wstring& gameDir, const std::wstring& uiDir, std::string& error) {
+    if (src.empty()) {
+        if (!writeReadyMarker(gameDir, uiDir)) { error = "game files are incomplete"; return false; }
+        return true;
+    }
+    if (!exists(src)) { error = "install source folder not found"; return false; }
+    int files = 0;
+    const std::wstring filesToCopy[] = { L"mcla.exe", L"mcla.toml" };
+    for (const auto& f : filesToCopy) {
+        if (exists(src + L"\\" + f) && !CopyFileW((src + L"\\" + f).c_str(), (gameDir + L"\\" + f).c_str(), FALSE)) {
+            error = "copy failed: " + narrow(f); return false;
+        }
+        ++files;
+    }
+    if (exists(src + L"\\cache\\mcla.toml")) {
+        CreateDirectoryW((gameDir + L"\\cache").c_str(), nullptr);
+        if (!CopyFileW((src + L"\\cache\\mcla.toml").c_str(), (gameDir + L"\\cache\\mcla.toml").c_str(), FALSE)) { error = "copy failed: cache/mcla.toml"; return false; }
+        ++files;
+    }
+    const std::wstring trees[] = { L"content", L"game_data", L"launcher\\ui" };
+    const std::wstring dest[] = { gameDir + L"\\content", gameDir + L"\\game_data", uiDir };
+    for (size_t i = 0; i < 3; ++i) {
+        if (exists(src + L"\\" + trees[i]) && !copyTree(src + L"\\" + trees[i], dest[i], error, files)) return false;
+    }
+    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallProgress){window.MCLALauncherAPI.setInstallProgress(100,'verify')}");
+    if (!writeReadyMarker(gameDir, uiDir)) { error = "verification failed; ready marker was not created"; return false; }
+    cleanupDevFiles(gameDir);
+    return true;
+}
+
+static void writeIniEnv(const std::wstring& iniPath, const std::vector<std::pair<std::string, std::string>>& envSets) {
+    std::vector<std::string> lines;
+    if (exists(iniPath)) {
+        std::ifstream in(iniPath);
+        std::string l;
+        while (std::getline(in, l)) {
+            while (!l.empty() && (l.back() == '\r' || l.back() == ' ' || l.back() == '\t')) l.pop_back();
+            lines.push_back(l);
+        }
+    }
+    int envStart = -1;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        std::string s = lines[i];
+        size_t non = s.find_first_not_of(" \t");
+        if (non != std::string::npos && _stricmp(s.substr(non).c_str(), "[env]") == 0) {
+            if (envStart < 0) envStart = (int)i;
+            else { lines.erase(lines.begin() + i); --i; }
+        }
+    }
+    if (envStart < 0) {
+        if (!lines.empty() && !lines.back().empty()) lines.push_back("");
+        lines.push_back("[env]");
+        envStart = (int)lines.size() - 1;
+    }
+    size_t envEnd = lines.size();
+    for (size_t i = envStart + 1; i < lines.size(); ++i) {
+        std::string s = lines[i];
+        size_t non = s.find_first_not_of(" \t");
+        if (non != std::string::npos && s[non] == '[') { envEnd = i; break; }
+    }
+    for (const auto& kv : envSets) {
+        bool found = false;
+        for (size_t i = envStart + 1; i < envEnd; ++i) {
+            std::string s = lines[i];
+            size_t non = s.find_first_not_of(" \t");
+            if (non == std::string::npos || s[non] == ';' || s[non] == '#') continue;
+            size_t eq = s.find('=', non);
+            if (eq == std::string::npos) continue;
+            std::string k = s.substr(non, eq - non);
+            while (!k.empty() && (k.back() == ' ' || k.back() == '\t')) k.pop_back();
+            if (_stricmp(k.c_str(), kv.first.c_str()) == 0) {
+                lines[i] = kv.first + "=" + kv.second;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            lines.insert(lines.begin() + envEnd, kv.first + "=" + kv.second);
+            envEnd++;
+        }
+    }
+    std::string iniBuf;
+    for (const auto& line : lines) { iniBuf += line; iniBuf += "\r\n"; }
+    writeFileAtomic(iniPath, iniBuf);
+}
+
+static void writeToml(const JVal& root, const std::wstring& ini, const std::wstring& tomlPath) {
+    if (root.type != JVal::OBJ) return;
+    std::vector<std::pair<std::string, std::string>> sets, envSets;
+    for (auto& sec : root.obj) {
+        if (sec.second.type != JVal::OBJ) continue;
+        for (auto& kv : sec.second.obj) {
+            if (kv.second.type == JVal::OBJ || kv.second.type == JVal::ARR) continue;
+            std::string val = kv.second.s;
+            bool isStr = kv.second.type == JVal::STR;
+            if (val == "true") val = "1";
+            else if (val == "false") val = "0";
+            if (kv.first == "mcla_adaptive_triggers") continue;
+            if (val == "null" || val.empty()) {
+                static const std::map<std::string, std::string> defs = {
                     {"mcla_left_stick_deadzone","24"},{"mcla_right_stick_deadzone","24"},
                     {"mcla_script_pad_latch_ms","100"},{"mcla_dt_max","0.125"},
                     {"mcla_poll_spin_us","40"},{"mcla_poll_tail_us","400"},
                     {"mcla_pump_wake_pause_s","60"},{"mcla_pump_sleep_max_ms","-1"},
-                    {"MCLA_LOD_SCALE","1"},{"MCLA_FLOW_LOD","1"}
+                    {"mcla_lod_scale","1"},{"MCLA_LOD_SCALE","1"},{"MCLA_FLOW_LOD","1"}
                 };
-                auto it=defs.find(kv.first);
-                if(it==defs.end())continue;
-                val=it->second; str=false;
+                auto it = defs.find(kv.first);
+                if (it == defs.end()) continue;
+                val = it->second; isStr = false;
             }
-            if(!okKey(kv.first)||badVal(val))continue;
-            if(sec.first=="_env"){
-                std::string k=kv.first;
-                if(k=="resolution_scale")k="MCLA_RENDER_SCALE";
-                else if(k=="vsync")k="MCLA_VSYNC";
-                if(kEnvOk.count(k))envSets.push_back({k,val});
+            if (!okKey(kv.first) || badVal(val)) continue;
+
+            if (sec.first == "_env") {
+                std::string k = kv.first;
+                if (k == "resolution_scale") k = "MCLA_RENDER_SCALE";
+                else if (k == "vsync") k = "MCLA_VSYNC";
+                if (kGeneratedEnvOk.count(k)) envSets.push_back({ k, val });
             } else {
-                // AO/shadows are startup env bridges in the game; mirroring the
-                // launcher choice there also persists it in its normal CVar file.
-                if(kv.first=="mcla_ambient_occlusion")
-                    envSets.push_back({"MCLA_AMBIENT_OCCLUSION",val});
-                else if(kv.first=="mcla_shadows")
-                    envSets.push_back({"MCLA_SHADOWS",val});
-                // The game's CVar reader is deliberately flat, so TOML table
-                // headers in the launcher schema are grouping labels only.
-                if(kv.first=="mcla_fps"){
-                    if(val=="-1")val="0";
-                    envSets.push_back({"MCLA_FPS_CAP",val});
+                if (kv.first == "mcla_ambient_occlusion") envSets.push_back({ "MCLA_AMBIENT_OCCLUSION", val });
+                else if (kv.first == "mcla_shadows") envSets.push_back({ "MCLA_SHADOWS", val });
+                else if (kv.first == "resolution_scale") envSets.push_back({ "MCLA_RENDER_SCALE", val });
+                else if (kv.first == "vsync") envSets.push_back({ "MCLA_VSYNC", (val == "true" || val == "1") ? "1" : "0" });
+                if (kv.first == "mcla_fps") {
+                    std::string fval = (val == "-1" || val == "uncapped") ? "0" : val;
+                    envSets.push_back({ "MCLA_FPS_CAP", fval });
                 }
-                if(kv.first=="fullscreen")envSets.push_back({"MCLA_DISPLAY_MODE",val=="1"?"borderless_fullscreen":"windowed"});
-                sets.push_back({kv.first,kv.first+" = "+(str?tomlQuote(val):val)});
+                if (kv.first == "display_mode") {
+                    envSets.push_back({ "MCLA_DISPLAY_MODE", val });
+                    sets.push_back({ "fullscreen", std::string("fullscreen = ") + (val == "windowed" ? "0" : "1") });
+                }
+                if (kv.first == "fullscreen") envSets.push_back({ "MCLA_DISPLAY_MODE", val == "1" ? "borderless_fullscreen" : "windowed" });
+                if (kv.first == "mcla_aspect_ratio") envSets.push_back({ "MCLA_ASPECT_RATIO", val });
             }
+
+            if (kv.first == "resolution_preset") {
+                WritePrivateProfileStringW(L"launcher", L"res", widen(val).c_str(), ini.c_str());
+                continue;
+            }
+            std::string tomlKey = kv.first;
+            if (tomlKey.rfind("MCLA_", 0) == 0 && tomlKey != "MCLA_SMALL_FS_SWAP") {
+                continue;
+            }
+            sets.push_back({ tomlKey, tomlKey + " = " + (isStr ? tomlQuote(val) : val) });
         }
     }
-    // WritePrivateProfileString keeps other lines and comments and never duplicates the section.
-    for(auto& kv:envSets)WritePrivateProfileStringW(L"env",widen(kv.first).c_str(),widen(kv.second).c_str(),ini.c_str());
-    if(sets.empty())return;
-    std::ifstream in(tomlPath); std::vector<std::string> lines; std::string l;
-    while(std::getline(in,l)){ if(!l.empty()&&l.back()=='\r')l.pop_back(); lines.push_back(l); }
-    in.close();
-    // new keys must stay before the first table header, or they would belong to that table
-    size_t hdr=0; while(hdr<lines.size()){ size_t s=lines[hdr].find_first_not_of(" \t"); if(s!=std::string::npos&&lines[hdr][s]=='[')break; hdr++; }
-    for(auto& kv:sets){
-        bool found=false;
-        for(size_t n=0;n<hdr;n++) if(tomlKeyOf(lines[n])==kv.first){lines[n]=kv.second;found=true;break;}
-        if(!found)lines.insert(lines.begin()+hdr++,kv.second);
+
+    if (!envSets.empty()) writeIniEnv(ini, envSets);
+
+    if (sets.empty()) return;
+    std::ifstream in(tomlPath);
+    std::vector<std::string> lines;
+    std::string l;
+    while (std::getline(in, l)) {
+        while (!l.empty() && (l.back() == '\r' || l.back() == ' ' || l.back() == '\t')) l.pop_back();
+        lines.push_back(l);
     }
-    std::ofstream out(tomlPath,std::ios::binary); for(auto& line:lines)out<<line<<"\r\n";
+    in.close();
+
+    size_t hdr = 0;
+    while (hdr < lines.size()) {
+        size_t s = lines[hdr].find_first_not_of(" \t");
+        if (s != std::string::npos && lines[hdr][s] == '[') break;
+        hdr++;
+    }
+    for (auto& kv : sets) {
+        bool found = false;
+        for (size_t n = 0; n < hdr; ++n) {
+            if (tomlKeyOf(lines[n]) == kv.first) {
+                lines[n] = kv.second;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            lines.insert(lines.begin() + hdr, kv.second);
+            hdr++;
+        }
+    }
+    std::string tomlBuf;
+    for (auto& line : lines) { tomlBuf += line; tomlBuf += "\r\n"; }
+    writeFileAtomic(tomlPath, tomlBuf);
 }
 
-// writeToml twice into temp files: one [env] header, allowlisted env only, quoted strings, keys before the table.
 static std::string slurp(const std::wstring& p){ std::ifstream f(p,std::ios::binary); std::stringstream ss; ss<<f.rdbuf(); return ss.str(); }
 static size_t countOf(const std::string& h,const std::string& n){ size_t c=0,p=0; while((p=h.find(n,p))!=std::string::npos){c++;p+=n.size();} return c; }
 static int selfTest(){
@@ -289,14 +615,183 @@ static int selfTest(){
     if(countOf(b,"mcla_fps = 120")!=1||countOf(b,"mcla_shadows = 0")!=1||countOf(b,"mcla_ambient_occlusion = 1")!=1)return 13;
     if(b.find("name = ")>b.find("[t]")||countOf(b,"[t]")!=1)return 7;
     DeleteFileW(ini.c_str()); DeleteFileW(toml.c_str());
+
+    std::wstring gdir = std::wstring(tmp) + L"mcla_st_game", cdir = gdir + L"\\cache";
+    CreateDirectoryW(gdir.c_str(), nullptr); CreateDirectoryW(cdir.c_str(), nullptr);
+    { std::ofstream o(gdir + L"\\mcla.toml", std::ios::binary); o << "mcla_fps = 90\r\nresolution_scale = 1\r\nvsync = false\r\n"; }
+    { std::ofstream o(cdir + L"\\mcla.toml", std::ios::binary); o << "mcla_fps = 120\r\nmcla_aspect_ratio = \"21:9\"\r\n"; }
+    std::string rb = tomlToJson(gdir, cdir, L"");
+    DeleteFileW((cdir + L"\\mcla.toml").c_str()); DeleteFileW((gdir + L"\\mcla.toml").c_str());
+    RemoveDirectoryW(cdir.c_str()); RemoveDirectoryW(gdir.c_str());
+    if(rb.find("\"mcla_fps\":120")==std::string::npos) return 15;
+    if(rb.find("\"resolution_scale\":1")==std::string::npos) return 16;
+    if(rb.find("\"vsync\":false")==std::string::npos) return 17;
+    if(rb.find("\"mcla_aspect_ratio\":\"21:9\"")==std::string::npos) return 18;
+
+    std::wstring rtIni = std::wstring(tmp) + L"mcla_rt.ini", rtDir = std::wstring(tmp) + L"mcla_rt_cache";
+    CreateDirectoryW(rtDir.c_str(), nullptr);
+    DeleteFileW(rtIni.c_str()); DeleteFileW((rtDir + L"\\mcla.toml").c_str());
+    const std::string rtJs = R"({"display":{"display_mode":"borderless_fullscreen","resolution_scale":2,"vsync":false,"mcla_aspect_ratio":"32:9","mcla_fps":120},"renderer":{"mcla_shadows":true,"mcla_ambient_occlusion":false},"input":{"mcla_key_throttle":"W","mcla_key_rt":"W"},"profile":{"mcla_profile_name":"Racer"},"_env":{"resolution_preset":"2560x1440","MCLA_WINDOW_W":"2560","MCLA_WINDOW_H":"1440","MCLA_HUD_SCALE":1.25,"MCLA_HDR":1}})";
+    { size_t p = 0; JVal r = jparse(rtJs, p); writeToml(r, rtIni, rtDir + L"\\mcla.toml"); }
+    std::string rtOut = tomlToJson(L"", rtDir, rtIni);
+    DeleteFileW(rtIni.c_str()); DeleteFileW((rtDir + L"\\mcla.toml").c_str()); RemoveDirectoryW(rtDir.c_str());
+    if(rtOut.find("\"display_mode\":\"borderless_fullscreen\"")==std::string::npos) return 19;
+    if(rtOut.find("\"resolution_scale\":2")==std::string::npos) return 20;
+    if(rtOut.find("\"vsync\":0")==std::string::npos) return 21;
+    if(rtOut.find("\"mcla_aspect_ratio\":\"32:9\"")==std::string::npos) return 22;
+    if(rtOut.find("\"mcla_fps\":120")==std::string::npos) return 23;
+    if(rtOut.find("\"mcla_shadows\":1")==std::string::npos || rtOut.find("\"mcla_ambient_occlusion\":0")==std::string::npos) return 24;
+    if(rtOut.find("\"mcla_key_throttle\":\"W\"")==std::string::npos || rtOut.find("\"mcla_key_rt\":\"W\"")==std::string::npos) return 25;
+    if(rtOut.find("\"mcla_profile_name\":\"Racer\"")==std::string::npos) return 26;
+    if(rtOut.find("\"resolution_preset\":\"2560x1440\"")==std::string::npos) return 27;
+    if(rtOut.find("\"MCLA_HUD_SCALE\":1.25")==std::string::npos || rtOut.find("\"MCLA_HDR\":1")==std::string::npos) return 28;
+
+    std::wstring mdir = std::wstring(tmp) + L"mcla_st_mods";
+    CreateDirectoryW(mdir.c_str(), nullptr);
+    CreateDirectoryW((mdir + L"\\alpha_mod").c_str(), nullptr);
+    CreateDirectoryW((mdir + L"\\beta_mod").c_str(), nullptr);
+    writeFileAtomic(mdir + L"\\modlist.txt", "#alpha_mod\r\nbeta_mod\r\n");
+    std::string mj = slurp(mdir + L"\\modlist.txt");
+    DeleteFileW((mdir + L"\\modlist.txt").c_str());
+    RemoveDirectoryW((mdir + L"\\alpha_mod").c_str());
+    RemoveDirectoryW((mdir + L"\\beta_mod").c_str());
+    RemoveDirectoryW(mdir.c_str());
+    if(mj != "#alpha_mod\r\nbeta_mod\r\n") return 29;
+    if(!kGeneratedEnvOk.count("MCLA_HDR") || !kGeneratedChildEnvAllowlist.count("MCLA_NO_CMDBUF_CACHE")) return 30;
+
+    std::wstring idir = std::wstring(tmp) + L"mcla_st_install";
+    std::error_code ec;
+    std::filesystem::remove_all(idir, ec);
+    std::wstring sg = idir + L"\\game", ss = idir + L"\\src", sui = sg + L"\\launcher\\ui";
+    CreateDirectoryW(ss.c_str(), nullptr);
+    CreateDirectoryW((ss + L"\\cache").c_str(), nullptr);
+    CreateDirectoryW((ss + L"\\launcher\\ui").c_str(), nullptr);
+    CreateDirectoryW((ss + L"\\content").c_str(), nullptr);
+    CreateDirectoryW((ss + L"\\game_data").c_str(), nullptr);
+    writeFileAtomic(ss + L"\\mcla.exe", "mock-exe");
+    writeFileAtomic(ss + L"\\mcla.toml", "mcla_fps = 60\r\n");
+    writeFileAtomic(ss + L"\\cache\\mcla.toml", "resolution_scale = 1\r\n");
+    writeFileAtomic(ss + L"\\launcher\\ui\\index.html", "<html>mock</html>");
+    writeFileAtomic(ss + L"\\content\\a.bin", "content");
+    writeFileAtomic(ss + L"\\game_data\\b.bin", "data");
+    if (checkInstall(sg, sui).markerValid) return 31;
+    std::string ierr;
+    if (!runInstall(ss, sg, sui, ierr)) return 32;
+    if (!checkInstall(sg, sui).markerValid) return 33;
+    if (slurp(sg + kReadyRel).find(std::string("\"version\":\"") + kInstallVersion + "\"") == std::string::npos) return 34;
+    writeFileAtomic(sg + L"\\mcla.exe", "tampered");
+    if (checkInstall(sg, sui).markerValid) return 35;
+    std::filesystem::remove_all(idir, ec);
     return 0;
 }
 
-// ------------------------------- action dispatch ----------------------------------------------
+static std::string g_cvarJson;
+static void dumpCVars() {
+    wchar_t tmp[MAX_PATH]; GetTempPathW(MAX_PATH, tmp);
+    const std::wstring out = std::wstring(tmp) + L"mcla_cvars_" + std::to_wstring(GetCurrentProcessId()) + L".json";
+    DeleteFileW(out.c_str());
+    SetEnvironmentVariableW(L"MCLA_DUMP_CVARS", out.c_str());
+    STARTUPINFOW si = { sizeof si }; PROCESS_INFORMATION pi = {};
+    std::wstring cmd = L"\"" + g_mclaExe + L"\"";
+    const BOOL started = CreateProcessW(g_mclaExe.c_str(), &cmd[0], nullptr, nullptr, FALSE,
+                                        CREATE_NO_WINDOW, nullptr, g_gameDir.c_str(), &si, &pi);
+    SetEnvironmentVariableW(L"MCLA_DUMP_CVARS", nullptr);
+    if (!started) return;
+    const bool exited = WaitForSingleObject(pi.hProcess, 10000) == WAIT_OBJECT_0;
+    if (!exited) TerminateProcess(pi.hProcess, 1);
+    DWORD code = 1; GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+    std::string js = exited && code == 0 ? slurp(out) : std::string();
+    DeleteFileW(out.c_str());
+    const size_t a = js.find_first_not_of(" \t\r\n"), b = js.find_last_not_of(" \t\r\n");
+    if (a != std::string::npos && js[a] == '[' && js[b] == ']') g_cvarJson = js.substr(a, b - a + 1);
+}
+
 static void eval(const std::string& js) {
     if (g_web) g_web->ExecuteScript(widen(js).c_str(), nullptr);
 }
-// Data-driven child env from mcla_launcher.ini at LAUNCH time (no rebuild for new settings).
+
+static std::wstring resolveModsDir(const std::wstring& gameDir = g_gameDir) {
+    const std::wstring gd = gameDir + L"\\game_data";
+    const DWORD attr = GetFileAttributesW(gd.c_str());
+    if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY) != 0) {
+        return gd + L"\\mods";
+    }
+    return gameDir + L"\\mods";
+}
+
+static std::string listModsJson(const std::wstring& gameDir = g_gameDir) {
+    const std::wstring modsDir = resolveModsDir(gameDir);
+    std::vector<std::string> diskMods;
+    WIN32_FIND_DATAW fd = {};
+    HANDLE hFind = FindFirstFileW((modsDir + L"\\*").c_str(), &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) continue;
+            if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+            diskMods.push_back(narrow(fd.cFileName));
+        } while (FindNextFileW(hFind, &fd));
+        FindClose(hFind);
+    }
+    std::sort(diskMods.begin(), diskMods.end());
+
+    struct ModEntry { std::string name; bool enabled; };
+    std::vector<ModEntry> ordered;
+    std::set<std::string> seen;
+    std::set<std::string> diskSet(diskMods.begin(), diskMods.end());
+
+    std::ifstream ml(modsDir + L"\\modlist.txt");
+    if (ml.good()) {
+        std::string line;
+        while (std::getline(ml, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
+            size_t s = line.find_first_not_of(" \t");
+            if (s == std::string::npos) continue;
+            line = line.substr(s);
+            bool enabled = true;
+            if (line[0] == '#') {
+                enabled = false;
+                line.erase(0, 1);
+                size_t s2 = line.find_first_not_of(" \t");
+                if (s2 == std::string::npos) continue;
+                line = line.substr(s2);
+            }
+            if (!diskSet.count(line) || seen.count(line)) continue;
+            seen.insert(line);
+            ordered.push_back({ line, enabled });
+        }
+    }
+    for (const auto& m : diskMods) {
+        if (!seen.count(m)) ordered.push_back({ m, true });
+    }
+
+    std::string out = "{\"modsDir\":\"" + jesc(narrow(modsDir)) + "\",\"mods\":[";
+    for (size_t i = 0; i < ordered.size(); ++i) {
+        if (i > 0) out += ",";
+        out += "{\"name\":\"" + jesc(ordered[i].name) + "\",\"enabled\":" + (ordered[i].enabled ? "true" : "false") + "}";
+    }
+    out += "]}";
+    return out;
+}
+
+static bool saveModlistFromJson(const JVal& modsArr, const std::wstring& gameDir = g_gameDir) {
+    if (modsArr.type != JVal::ARR) return false;
+    const std::wstring modsDir = resolveModsDir(gameDir);
+    CreateDirectoryW(modsDir.c_str(), nullptr);
+    std::string buf;
+    for (const auto& item : modsArr.obj) {
+        if (item.second.type != JVal::OBJ) continue;
+        const JVal* n = jget(item.second, "name");
+        const JVal* e = jget(item.second, "enabled");
+        if (!n || n->type != JVal::STR || n->s.empty()) continue;
+        if (n->s.find('/') != std::string::npos || n->s.find('\\') != std::string::npos || n->s == "..") continue;
+        const bool enabled = !(e && (e->s == "false" || e->s == "0"));
+        if (!enabled) buf += "#";
+        buf += n->s + "\r\n";
+    }
+    return writeFileAtomic(modsDir + L"\\modlist.txt", buf);
+}
+
 static std::wstring buildChildEnv() {
     std::vector<std::wstring> kv;
     wchar_t* cur = GetEnvironmentStringsW();
@@ -308,43 +803,44 @@ static std::wstring buildChildEnv() {
             if (o.size() > eq && o[eq] == L'=' && _wcsnicmp(o.c_str(), e.c_str(), eq) == 0) { o = e; return; }
         kv.push_back(e);
     };
+
     wchar_t buf[256];
-    auto get = [&](const wchar_t* k, const wchar_t* d)->std::wstring{ GetPrivateProfileStringW(L"launcher",k,d,buf,256,g_ini.c_str()); return std::wstring(buf); };
-    std::wstring res=get(L"res",L"2560x1440"); size_t x=res.find(L'x');
-    if(x!=std::wstring::npos){
-        int w=_wtoi(res.substr(0,x).c_str()), h=_wtoi(res.substr(x+1).c_str());
-        if(w>=640&&w<=7680&&h>=480&&h<=4320){ setEnv(L"MCLA_WINDOW_W="+std::to_wstring(w)); setEnv(L"MCLA_WINDOW_H="+std::to_wstring(h)); }
-        else x=std::wstring::npos;
+    GetPrivateProfileStringW(L"launcher", L"res", L"", buf, 256, g_ini.c_str());
+    std::wstring res = buf;
+    size_t x = res.find(L'x');
+    if (x != std::wstring::npos) {
+        int w = _wtoi(res.substr(0, x).c_str()), h = _wtoi(res.substr(x + 1).c_str());
+        if (w >= 640 && w <= 7680 && h >= 480 && h <= 4320) {
+            setEnv(L"MCLA_WINDOW_W=" + std::to_wstring(w));
+            setEnv(L"MCLA_WINDOW_H=" + std::to_wstring(h));
+        }
     }
-    int sc=_wtoi(get(L"scale",L"2").c_str()); if(sc>=1&&sc<=3)setEnv(L"MCLA_RENDER_SCALE="+std::to_wstring(sc));
-    std::wstring fs=get(L"fullscreen",L"1");
-    setEnv(std::wstring(L"MCLA_DISPLAY_MODE=")+(fs==L"1"?L"borderless_fullscreen":L"windowed"));
-    // profile name: printable ASCII, max 15 (same rule as the game)
-    std::wstring name; for(wchar_t c:get(L"name",L"SWA")) if(c>=0x20&&c<0x7F&&name.size()<15)name+=c;
-    if(!name.empty())setEnv(L"MCLA_PROFILE_NAME="+name);
-    int ai=_wtoi(get(L"aspect",L"0").c_str()),aw=0;
-    if(ai==2)aw=1680; else if(ai==3)aw=2560;
-    else if(ai==0&&x!=std::wstring::npos)aw=(int)(720.0*_wtoi(res.substr(0,x).c_str())/std::max(1,_wtoi(res.substr(x+1).c_str()))+0.5);
-    if(aw>1280){ setEnv(L"MCLA_ASPECT_FIX=1"); setEnv(L"MCLA_ASPECT_WIDTH="+std::to_wstring(std::min(aw,4095))); }
-    if(_wtoi(get(L"blur",L"0").c_str())==1)setEnv(L"MCLA_MOTION_BLUR=0");
-    static const wchar_t* kLod[]={L"0.75",L"1.0",L"1.5",L"2.0"}; int lod=_wtoi(get(L"lod",L"1").c_str());
-    if(lod>=0&&lod<4&&lod!=1)setEnv(std::wstring(L"MCLA_LOD_SCALE=")+kLod[lod]);
-    // MCLA_FPS_CAP=0 means "no override" in the game; uncapped is the literal word. Key absent = no override.
-    static const wchar_t* kFps[]={L"30",L"60",L"120",L"uncapped"}; std::wstring fpsS=get(L"fps",L"");
-    int fps=_wtoi(fpsS.c_str()); if(!fpsS.empty()&&fps>=0&&fps<4)setEnv(std::wstring(L"MCLA_FPS_CAP=")+kFps[fps]);
-    if(_wtoi(get(L"vsync",L"0").c_str())==1)setEnv(L"MCLA_VSYNC=1");
-    if(_wtoi(get(L"gamma",L"0").c_str())==1)setEnv(L"MCLA_NO_GAMMA_LUT=1");
-    std::vector<wchar_t> sec(32768);
-    GetPrivateProfileSectionW(L"env",sec.data(),(DWORD)sec.size(),g_ini.c_str());
-    for(wchar_t* p=sec.data();*p;p+=wcslen(p)+1){
-        std::wstring e=p; size_t c=e.find(L" ;"); if(c!=std::wstring::npos)e.resize(c);
-        while(!e.empty()&&e.back()==L' ')e.pop_back();
-        if(e.empty()||e[0]==L';')continue;
-        setEnv(e);
+
+    if (exists(g_ini)) {
+        std::vector<wchar_t> sec(32768);
+        GetPrivateProfileSectionW(L"env", sec.data(), (DWORD)sec.size(), g_ini.c_str());
+        for (wchar_t* p = sec.data(); *p; p += wcslen(p) + 1) {
+            std::wstring e = p;
+            size_t c = e.find(L" ;"); if (c != std::wstring::npos) e.resize(c);
+            while (!e.empty() && (e.back() == L' ' || e.back() == L'\r')) e.pop_back();
+            if (e.empty() || e[0] == L';') continue;
+            if (e.find(L'\n') != std::wstring::npos || e.find(L'\r') != std::wstring::npos) continue;
+            size_t eq = e.find(L'='); if (eq == std::wstring::npos || eq == 0) continue;
+            std::string k = narrow(e.substr(0, eq));
+            std::string v = narrow(e.substr(eq + 1));
+            if (!kGeneratedChildEnvAllowlist.count(k)) continue;
+            if (v.find('\0') != std::string::npos || v.find('\r') != std::string::npos || v.find('\n') != std::string::npos) continue;
+            setEnv(e);
+        }
     }
-    std::wstring block; for(auto& e:kv){block+=e;block+=L'\0';} block+=L'\0';
+
+    std::wstring block;
+    for (auto& e : kv) { block += e; block += L'\0'; }
+    block += L'\0';
     return block;
 }
+
+static bool hasGame(const std::wstring& d) { return !d.empty() && exists(d + L"\\mcla.exe"); }
 
 static bool gameRunning() {
     HANDLE s = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); if (s == INVALID_HANDLE_VALUE) return false;
@@ -354,12 +850,21 @@ static bool gameRunning() {
     CloseHandle(s); return r;
 }
 static void launchGame() {
+    InstallCheck c = checkInstall(g_gameDir, g_uiDir);
+    if (!c.markerValid) {
+        eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
+        eval("if(typeof switchTab==='function'){switchTab('main','next')}");
+        return;
+    }
     if (!exists(g_mclaExe)) { MessageBoxW(g_hwnd, (L"mcla.exe not found:\n"+g_mclaExe).c_str(), L"MCLA Launcher", MB_ICONERROR); return; }
     if (gameRunning()) { MessageBoxW(g_hwnd, L"mcla.exe is already running.", L"MCLA Launcher", MB_ICONINFORMATION); return; }
     STARTUPINFOW si = { sizeof(si) }; PROCESS_INFORMATION pi = {};
     std::wstring cmd = L"\"" + g_mclaExe + L"\"";
     std::wstring env = buildChildEnv();
-    if (CreateProcessW(g_mclaExe.c_str(), &cmd[0], nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT, (void*)env.c_str(), g_gameDir.c_str(), &si, &pi)) {
+    wchar_t dbg[8] = {};
+    const bool debugConsole = GetEnvironmentVariableW(L"MCLA_DEBUG_CONSOLE", dbg, 8) > 0 && dbg[0] == L'1';
+    const DWORD flags = CREATE_UNICODE_ENVIRONMENT | (debugConsole ? 0 : CREATE_NO_WINDOW);
+    if (CreateProcessW(g_mclaExe.c_str(), &cmd[0], nullptr, nullptr, FALSE, flags, (void*)env.c_str(), g_gameDir.c_str(), &si, &pi)) {
         CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
     } else MessageBoxW(g_hwnd, L"Cannot start mcla.exe", L"MCLA Launcher", MB_ICONERROR);
 }
@@ -367,7 +872,66 @@ static void openFolder(const std::wstring& p) {
     ShellExecuteW(nullptr, L"open", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-// WebMessageReceived handler (via ICoreWebView2WebMessageReceivedEventHandler)
+static void cleanupDevFiles(const std::wstring& gameDir) {
+    std::wstring pattern = gameDir + L"\\*";
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        std::wstring name = fd.cFileName;
+        size_t dot = name.find_last_of(L'.');
+        if (dot != std::wstring::npos) {
+            std::wstring ext = name.substr(dot);
+            if (_wcsicmp(ext.c_str(), L".log") == 0 || _wcsicmp(ext.c_str(), L".pdb") == 0 || _wcsicmp(ext.c_str(), L".dmp") == 0)
+                DeleteFileW((gameDir + L"\\" + name).c_str());
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+static bool writeSettingsJson(const std::string& json) {
+    size_t p = 0;
+    JVal r = jparse(json, p);
+    if (r.type != JVal::OBJ) return false;
+    writeToml(r, g_ini, g_cacheDir + L"\\mcla.toml");
+    return true;
+}
+
+static void applyGraphicsPreset(const std::string& preset) {
+    std::string shadows = "true", ao = "true", foliage = "true", lod = "1", blur = "true";
+    std::string cacheSoft = "3072", cacheHard = "3584";
+    if (preset == "LOW") {
+        shadows = "false"; ao = "false"; lod = "0.75"; blur = "false";
+        cacheSoft = "1024"; cacheHard = "1280";
+    } else if (preset == "MEDIUM") {
+        ao = "false"; blur = "false"; cacheSoft = "2048"; cacheHard = "2560";
+    }
+    writeSettingsJson("{\"renderer\":{\"mcla_shadows\":" + shadows + ",\"mcla_ambient_occlusion\":" + ao +
+        ",\"mcla_fullscreen_blur\":" + blur + "},\"graphics\":{\"mcla_lod_scale\":" + lod +
+        ",\"mcla_foliage_impostors\":" + foliage + "},\"_env\":{\"MCLA_TEXTURE_CACHE_SOFT_MB\":" +
+        cacheSoft + ",\"MCLA_TEXTURE_CACHE_HARD_MB\":" + cacheHard + "}}");
+}
+
+static void applyControlPreset(const std::string& preset) {
+    std::string t = "W", b = "S", l = "A", r = "D", prompts = "pc";
+    if (preset == "XBOX") { t = "W"; b = "S"; l = "A"; r = "D"; prompts = "xbox"; }
+    if (preset == "CUSTOM") return;
+    writeSettingsJson("{\"input\":{\"mcla_button_prompts\":\"" + prompts + "\",\"mcla_key_throttle\":\"" + t +
+        "\",\"mcla_key_brake\":\"" + b + "\",\"mcla_key_steer_left\":\"" + l +
+        "\",\"mcla_key_steer_right\":\"" + r + "\"}}");
+}
+
+static void resetKeymap() {
+    writeSettingsJson("{\"input\":{\"mcla_key_throttle\":\"W\",\"mcla_key_brake\":\"S\",\"mcla_key_steer_left\":\"A\",\"mcla_key_steer_right\":\"D\",\"mcla_button_prompts\":\"auto\"}}");
+}
+
+static bool backupConfig() {
+    const std::wstring src = g_cacheDir + L"\\mcla.toml";
+    if (!exists(src)) return false;
+    return CopyFileW(src.c_str(), (src + L".bak").c_str(), FALSE) != FALSE;
+}
+
 struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
     ULONG ref = 1;
     STDMETHOD(QueryInterface)(REFIID iid, void** pp) override {
@@ -386,21 +950,163 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
         size_t pos = 0; JVal root = jparse(msg, pos);
         const JVal* a = jget(root, "action");
         std::string action = (a && a->type == JVal::STR) ? a->s : "";
+        const JVal* pl = jget(root, "payload");
         const JVal* ex = jget(root, "extra");
+        if (!ex && pl) ex = jget(*pl, "extra");
         const JVal* tm = ex ? jget(*ex, "toml") : nullptr;
         JVal none; const JVal& extraToml = tm ? *tm : none;
 
+        const bool installedForWrite = checkInstall(g_gameDir, g_uiDir).markerValid;
+        const bool settingsWrite = action == "optionChanged" || action == "saveConfig" || action == "restoreDefaults" ||
+            action == "applyGraphicsPreset" || action == "applyControlPreset" || action == "resetKeymap" ||
+            action == "saveModlist" || action == "launchGame";
+        if (!installedForWrite && settingsWrite) { eval("if(typeof mclaBadInput==='function'){mclaBadInput('locked-row')}"); return S_OK; }
+
         if (action == "ready") {
-            std::string js = "if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadConfig){window.MCLALauncherAPI.loadConfig(" + tomlToJson() + ");}";
-            eval(js);
+            wchar_t lang[16] = {};
+            GetPrivateProfileStringW(L"launcher", L"installLang", L"en", lang, 16, g_ini.c_str());
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallLanguage){window.MCLALauncherAPI.setInstallLanguage('" + normalizeLang(narrow(lang)) + "')}");
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallSource){window.MCLALauncherAPI.setInstallSource('" + jesc(narrow(g_installSource)) + "')}");
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
+            wchar_t cancelled[8] = {};
+            GetPrivateProfileStringW(L"launcher", L"installCancelled", L"", cancelled, 8, g_ini.c_str());
+            (void)cancelled;
+            const bool installed = checkInstall(g_gameDir, g_uiDir).markerValid;
+            if (installed && !g_cvarJson.empty()) eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadCVars){window.MCLALauncherAPI.loadCVars(" + g_cvarJson + ");}");
+            if (installed) eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadConfig){window.MCLALauncherAPI.loadConfig(" + tomlToJson() + ");}");
+            if (installed) eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadMods){window.MCLALauncherAPI.loadMods(" + listModsJson() + ");}");
+        } else if (action == "getInstallStatus") {
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
+        } else if (action == "setInstallLanguage") {
+            const JVal* lv = jget(root, "language");
+            std::string lv2 = (lv && lv->type == JVal::STR) ? lv->s : "en";
+            lv2 = normalizeLang(lv2);
+            WritePrivateProfileStringW(L"launcher", L"installLang", widen(lv2).c_str(), g_ini.c_str());
+        } else if (action == "chooseInstallSource") {
+            BROWSEINFOW bi = {};
+            bi.hwndOwner = g_hwnd;
+            bi.lpszTitle = L"Select the folder that contains the game files";
+            bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+            PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+            if (pidl) {
+                wchar_t pth[MAX_PATH];
+                BOOL ok = SHGetPathFromIDListW(pidl, pth);
+                CoTaskMemFree(pidl);
+                if (ok) {
+                    g_installSource = pth;
+                    WritePrivateProfileStringW(L"launcher", L"installSource", pth, g_ini.c_str());
+                    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallSource){window.MCLALauncherAPI.setInstallSource('" + jesc(narrow(pth)) + "')}");
+                }
+            }
+        } else if (action == "chooseIso") {
+            wchar_t file[MAX_PATH] = {};
+            OPENFILENAMEW ofn = {};
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner = g_hwnd;
+            ofn.lpstrFilter = L"Xbox 360 ISO (*.iso)\0*.iso\0All Files (*.*)\0*.*\0";
+            ofn.lpstrFile = file;
+            ofn.nMaxFile = MAX_PATH;
+            ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+            ofn.lpstrTitle = L"Select the game ISO";
+            if (GetOpenFileNameW(&ofn)) {
+                HANDLE h = CreateFileW(file, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+                char magic[8] = {};
+                bool valid = false;
+                if (h != INVALID_HANDLE_VALUE) {
+                    LARGE_INTEGER off{}; off.QuadPart = 0x8001;
+                    if (SetFilePointerEx(h, off, nullptr, FILE_BEGIN)) {
+                        DWORD got = 0; ReadFile(h, magic, 5, &got, nullptr);
+                        valid = (got == 5 && memcmp(magic, "CD001", 5) == 0);
+                    }
+                    CloseHandle(h);
+                }
+                if (valid) {
+                    g_isoPath = file;
+                    WritePrivateProfileStringW(L"launcher", L"isoPath", file, g_ini.c_str());
+                    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallSource){window.MCLALauncherAPI.setInstallSource('" + jesc(narrow(file)) + "')}");
+                } else {
+                    eval("if(typeof mclaBadInput==='function'){mclaBadInput('bad-iso')}");
+                }
+            }
+        } else if (action == "runInstall") {
+            const JVal* sv = jget(root, "source");
+            if (sv && sv->type == JVal::STR && !sv->s.empty()) { g_installSource = widen(sv->s); WritePrivateProfileStringW(L"launcher", L"installSource", g_installSource.c_str(), g_ini.c_str()); }
+            std::string err;
+            const bool ok = runInstall(g_installSource, g_gameDir, g_uiDir, err);
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.installFinished){window.MCLALauncherAPI.installFinished(" + std::string(ok ? "true" : "false") + ",'" + jesc(err) + "')}");
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
+        } else if (action == "cancelInstall") {
+            WritePrivateProfileStringW(L"launcher", L"installCancelled", L"1", g_ini.c_str());
+        } else if (action == "logError") {
+            const JVal* kv = jget(root, "kind");
+            const JVal* dv = jget(root, "detail");
+            std::string kind = (kv && kv->type == JVal::STR) ? kv->s : "unknown";
+            std::string detail = (dv && dv->type == JVal::STR) ? dv->s : "";
+            char stamp[32]; time_t now = time(nullptr);
+            strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
+            std::string line = std::string(stamp) + "\t" + kind + "\t" + jesc(detail) + "\r\n";
+            HANDLE h = CreateFileW((g_dir + L"\\launcher_errors.log").c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (h != INVALID_HANDLE_VALUE) { DWORD n = 0; WriteFile(h, line.data(), (DWORD)line.size(), &n, nullptr); CloseHandle(h); }
+        } else if (action == "backupConfig") {
+            eval("if(typeof showToast==='function'){showToast('BACKUP " + std::string(backupConfig() ? "SAVED" : "FAILED") + "')}");
+        } else if (action == "restoreConfig") {
+            const std::wstring bak = g_cacheDir + L"\\mcla.toml.bak";
+            const bool ok = exists(bak) && CopyFileW(bak.c_str(), (g_cacheDir + L"\\mcla.toml").c_str(), FALSE) != FALSE;
+            eval("if(typeof showToast==='function'){showToast('RESTORE " + std::string(ok ? "DONE" : "FAILED") + "')}");
+            if (!ok) eval("if(typeof mclaBadInput==='function'){mclaBadInput('backup-failed')}");
+        } else if (action == "checkUpdate") {
+            ShellExecuteW(nullptr, L"open", L"https://github.com/3bdull4h2008/mcla-launcher/releases", nullptr, nullptr, SW_SHOWNORMAL);
+        } else if (action == "resetKeymap") {
+            resetKeymap();
+            eval("if(typeof showToast==='function'){showToast('KEYMAP RESET')}");
+        } else if (action == "applyGraphicsPreset" || action == "applyControlPreset") {
+            const JVal* pv = pl ? jget(*pl, "preset") : nullptr;
+            if (!pv || pv->type != JVal::STR) pv = jget(root, "preset");
+            const std::string preset = (pv && pv->type == JVal::STR) ? pv->s : "";
+            if (action == "applyGraphicsPreset") applyGraphicsPreset(preset); else applyControlPreset(preset);
         } else if (action == "dragWindow") {
             ReleaseCapture(); SendMessageW(g_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
         } else if (action == "launchGame") {
             writeToml(extraToml, g_ini, g_cacheDir + L"\\mcla.toml"); launchGame();
-        } else if (action == "saveConfig") {
-            writeToml(extraToml, g_ini, g_cacheDir + L"\\mcla.toml");
+        } else if (action == "saveConfig" || action == "optionChanged" || action == "restoreDefaults") {
+            if (tm) writeToml(extraToml, g_ini, g_cacheDir + L"\\mcla.toml");
+        } else if (action == "listMods") {
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadMods){window.MCLALauncherAPI.loadMods(" + listModsJson() + ");}");
+        } else if (action == "saveModlist") {
+            const JVal* mods = jget(root, "mods");
+            if (!mods && pl) mods = jget(*pl, "mods");
+            if (mods) saveModlistFromJson(*mods);
+        } else if (action == "openModsFolder") {
+            const std::wstring md = resolveModsDir();
+            CreateDirectoryW(md.c_str(), nullptr);
+            openFolder(md);
         } else if (action == "browseFiles") {
             openFolder(g_gameDir);
+        } else if (action == "changeGameDir") {
+            BROWSEINFOW bi = {};
+            bi.hwndOwner = g_hwnd;
+            bi.lpszTitle = L"Select the folder that contains mcla.exe";
+            bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+            PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+            if (pidl) {
+                wchar_t pth[MAX_PATH];
+                BOOL ok = SHGetPathFromIDListW(pidl, pth);
+                CoTaskMemFree(pidl);
+                if (ok && hasGame(pth)) {
+                    wchar_t full[MAX_PATH];
+                    GetFullPathNameW(pth, MAX_PATH, full, nullptr);
+                    g_gameDir = full;
+                    g_mclaExe = g_gameDir + L"\\mcla.exe";
+                    g_cacheDir = g_gameDir + L"\\cache";
+                    CreateDirectoryW(g_cacheDir.c_str(), nullptr);
+                    WritePrivateProfileStringW(L"launcher", L"gameDir", full, g_ini.c_str());
+                    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadConfig){window.MCLALauncherAPI.loadConfig(" + tomlToJson() + ");}");
+                    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadMods){window.MCLALauncherAPI.loadMods(" + listModsJson() + ");}");
+                    eval("if(window.showToast)window.showToast('GAME FOLDER UPDATED');");
+                } else {
+                    MessageBoxW(g_hwnd, L"mcla.exe was not found in the selected folder.", L"MCLA Launcher", MB_ICONWARNING);
+                }
+            }
         } else if (action == "openLogs") {
             openFolder(g_cacheDir);
         } else if (action == "minimizeWindow") {
@@ -412,7 +1118,6 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
     }
 };
 
-// NavigationCompleted -> add transparent-window class on html+body (v3 contract).
 struct NavHandler : public ICoreWebView2NavigationCompletedEventHandler {
     ULONG ref = 1;
     STDMETHOD(QueryInterface)(REFIID iid, void** pp) override {
@@ -428,7 +1133,6 @@ struct NavHandler : public ICoreWebView2NavigationCompletedEventHandler {
     }
 };
 
-// Created-controller callback: set background, hook events, map virtual host, navigate.
 struct ControllerHandler : public ICoreWebView2CreateCoreWebView2ControllerCompletedHandler {
     ULONG ref = 1;
     STDMETHOD(QueryInterface)(REFIID iid, void** pp) override {
@@ -440,10 +1144,10 @@ struct ControllerHandler : public ICoreWebView2CreateCoreWebView2ControllerCompl
     STDMETHOD(Invoke)(HRESULT hr, ICoreWebView2Controller* controller) override {
         if (FAILED(hr) || !controller) { wv2Fail(FAILED(hr) ? hr : E_FAIL); return S_OK; }
         g_controller = controller;
+        g_controller->put_IsVisible(TRUE);
         g_controller->get_CoreWebView2(&g_web);
         if (!g_web) { wv2Fail(E_FAIL); return S_OK; }
-        // TRUE transparent background (ARGB 0) and raw-pixel bounds keep the
-        // fixed CSS layout stable across per-monitor DPI changes.
+
         ComPtr<ICoreWebView2Controller3> c3;
         if (SUCCEEDED(g_controller.As(&c3))) {
             c3->put_BoundsMode(COREWEBVIEW2_BOUNDS_MODE_USE_RAW_PIXELS);
@@ -457,10 +1161,10 @@ struct ControllerHandler : public ICoreWebView2CreateCoreWebView2ControllerCompl
 #endif
             st->put_AreDefaultContextMenusEnabled(FALSE);
         }
-        // Handlers start at refcount 1; the event source AddRefs, so drop ours (no leak).
+
         MsgHandler* mh = new MsgHandler(); g_web->add_WebMessageReceived(mh, nullptr); mh->Release();
         NavHandler* nh = new NavHandler(); g_web->add_NavigationCompleted(nh, nullptr); nh->Release();
-        // The page may only ever show our own virtual host; everything else is cancelled or blocked.
+
         g_web->add_NavigationStarting(Callback<ICoreWebView2NavigationStartingEventHandler>(
             [](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* a) -> HRESULT {
                 LPWSTR u = nullptr; bool ok = false;
@@ -477,11 +1181,11 @@ struct ControllerHandler : public ICoreWebView2CreateCoreWebView2ControllerCompl
     wchar_t tabName[64];
     if (GetEnvironmentVariableW(L"MCLA_LAUNCHER_TAB",tabName,64)>0) url+=L"&tab="+std::wstring(tabName);
     g_web->Navigate(url.c_str());
+        g_controller->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
         return S_OK;
     }
 };
 
-// Environment created -> create controller on our window.
 struct EnvHandler : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
     ULONG ref = 1;
     STDMETHOD(QueryInterface)(REFIID iid, void** pp) override {
@@ -499,26 +1203,36 @@ struct EnvHandler : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHa
     }
 };
 
-// ------------------------------- paths --------------------------------------------------------
-static bool hasGame(const std::wstring& d) { return !d.empty() && exists(d + L"\\mcla.exe"); }
-// gameDir: ini key, else launcher folder, else ..\..\mcla pc\build, else old repo layout, else ask.
 static bool resolveGameDir() {
-    wchar_t buf[MAX_PATH] = {};
+    wchar_t buf[MAX_PATH] = {}, src[MAX_PATH] = {}, iso[MAX_PATH] = {}, lang[16] = {};
     GetPrivateProfileStringW(L"launcher", L"gameDir", L"", buf, MAX_PATH, g_ini.c_str());
-    std::wstring cand[] = { buf, g_dir, g_dir + L"\\..\\..\\mcla pc\\build", dirOf(g_dir) + L"\\build" };
-    for (auto& c : cand) if (hasGame(c)) {
-        wchar_t full[MAX_PATH]; GetFullPathNameW(c.c_str(), MAX_PATH, full, nullptr); g_gameDir = full; return true;
+    GetPrivateProfileStringW(L"launcher", L"installSource", L"", src, MAX_PATH, g_ini.c_str());
+    GetPrivateProfileStringW(L"launcher", L"isoPath", L"", iso, MAX_PATH, g_ini.c_str());
+    GetPrivateProfileStringW(L"launcher", L"installLang", L"en", lang, 16, g_ini.c_str());
+    g_installSource = src;
+    g_isoPath = iso;
+    std::wstring cand[] = {
+        buf,
+        g_dir,
+        dirOf(g_dir) + L"\\..\\mcla pc\\build",
+        g_dir + L"\\..\\..\\mcla pc\\build",
+        dirOf(g_dir) + L"\\build",
+        dirOf(g_dir)
+    };
+    for (auto& c : cand) {
+        if (!c.empty() && hasGame(c)) {
+            wchar_t full[MAX_PATH];
+            GetFullPathNameW(c.c_str(), MAX_PATH, full, nullptr);
+            g_gameDir = full;
+            WritePrivateProfileStringW(L"launcher", L"gameDir", full, g_ini.c_str());
+            return true;
+        }
     }
-    for (;;) {
-        BROWSEINFOW bi = {}; bi.lpszTitle = L"Select the folder that contains mcla.exe"; bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-        PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi); if (!pidl) return false;
-        wchar_t pth[MAX_PATH]; BOOL ok = SHGetPathFromIDListW(pidl, pth); CoTaskMemFree(pidl);
-        if (ok && hasGame(pth)) { g_gameDir = pth; WritePrivateProfileStringW(L"launcher", L"gameDir", pth, g_ini.c_str()); return true; }
-        MessageBoxW(nullptr, L"mcla.exe was not found in that folder.", L"MCLA Launcher", MB_ICONWARNING);
-    }
+    g_installMode = true;
+    g_gameDir = buf[0] ? buf : g_dir;
+    return true;
 }
 
-// ------------------------------- window -------------------------------------------------------
 static void LayoutLauncher(HWND h, UINT dpi, HMONITOR monitor, const RECT* suggested = nullptr) {
     g_dpi = dpi ? dpi : GetDpiForWindow(h);
     const int wantedW = MulDiv(WIN_W, (int)g_dpi, 96);
@@ -536,8 +1250,7 @@ static void LayoutLauncher(HWND h, UINT dpi, HMONITOR monitor, const RECT* sugge
     const int workLeft = (int)work.left, workTop = (int)work.top;
     const int availW = std::max(1, (int)work.right - workLeft);
     const int availH = std::max(1, (int)work.bottom - workTop);
-    // Normally 1.0. If the work area is smaller than the DPI-scaled layout,
-    // shrink host and content together so the complete CSS layout remains visible.
+
     g_zoom = std::min(1.0, std::min(availW / (double)wantedW, availH / (double)wantedH));
     g_w = std::max(1, (int)std::lround(wantedW * g_zoom));
     g_h = std::max(1, (int)std::lround(wantedH * g_zoom));
@@ -549,8 +1262,6 @@ static void LayoutLauncher(HWND h, UINT dpi, HMONITOR monitor, const RECT* sugge
 
     const RECT bounds{0, 0, g_w, g_h};
     if (g_controller) g_controller->SetBoundsAndZoomFactor(bounds, g_zoom);
-    HRGN region = CreateRectRgn(0, 0, g_w, g_h);
-    if (region) SetWindowRgn(h, region, TRUE);
 }
 
 static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -567,7 +1278,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_NCHITTEST: {
-        // Top 24 CSS px strip (left of the window controls) drags the borderless window.
+
         POINT p{ (short)LOWORD(l), (short)HIWORD(l) }; ScreenToClient(h, &p);
         const double cssToPhysical = g_dpi / 96.0 * g_zoom;
         const int dragH = (int)std::lround(24 * cssToPhysical);
@@ -582,8 +1293,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 }
 
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
-    // The manifest declares PerMonitorV2. The runtime call is best-effort only;
-    // calling SetProcessDPIAware as a fallback can downgrade an already-aware process.
+
     if (wcsstr(GetCommandLineW(), L"--selftest")) return selfTest();
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -592,8 +1302,10 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
     std::wstring repo = dirOf(g_dir);
     g_ini = g_dir + L"\\mcla_launcher.ini";
     if (!resolveGameDir()) return 0;
+    if (g_installMode) SetEnvironmentVariableW(L"MCLA_INSTALL_MODE", L"1");
     if (!exists(g_ini) && exists(g_gameDir + L"\\mcla_launcher.ini")) g_ini = g_gameDir + L"\\mcla_launcher.ini";
     g_mclaExe = g_gameDir + L"\\mcla.exe";
+    dumpCVars();
     g_uiDir = g_dir + L"\\launcher\\ui";
     if (!exists(g_uiDir + L"\\index.html")) g_uiDir = repo + L"\\tools\\launcher\\ui";
     if (!exists(g_uiDir + L"\\index.html")) g_uiDir = g_gameDir + L"\\launcher\\ui";
@@ -605,30 +1317,30 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     RegisterClassW(&wc);
 
-    // Open on the foreground window's monitor (the user's active display), not
-    // necessarily the primary display. Create hidden first, then query that
-    // monitor's actual DPI; Windows does not send WM_DPICHANGED on creation.
     HWND foreground = GetForegroundWindow();
     HMONITOR monitor = foreground ? MonitorFromWindow(foreground, MONITOR_DEFAULTTONEAREST)
                                   : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFO target{}; target.cbSize = sizeof(target);
     POINT probe{0, 0};
     if (GetMonitorInfoW(monitor, &target)) probe = { target.rcWork.left + 8, target.rcWork.top + 8 };
-    g_hwnd = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP | WS_EX_LAYERED, wc.lpszClassName,
+    g_hwnd = CreateWindowExW(WS_EX_APPWINDOW, wc.lpszClassName,
                              L"Midnight Club: Los Angeles — Launcher", WS_POPUP,
                              probe.x, probe.y, 1, 1, nullptr, nullptr, hi, nullptr);
     if (!g_hwnd) return (int)GetLastError();
+    MARGINS margins = { -1, -1, -1, -1 };
+    DwmExtendFrameIntoClientArea(g_hwnd, &margins);
     LayoutLauncher(g_hwnd, GetDpiForWindow(g_hwnd), monitor);
     ShowWindow(g_hwnd, SW_SHOW); UpdateWindow(g_hwnd);
 
-    // WebView2 user-data folder: %LOCALAPPDATA%\MCLA Launcher\WebView2 (falls back to next to the exe).
-    std::wstring ud = g_dir + L"\\WebView2UserData";
+    std::wstring ud;
     wchar_t la[MAX_PATH];
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", la, MAX_PATH)) {
-        std::wstring d = std::wstring(la) + L"\\MCLA Launcher\\WebView2";
-        if (SHCreateDirectoryExW(nullptr, d.c_str(), nullptr) == ERROR_SUCCESS || exists(d)) ud = d;
+        ud = std::wstring(la) + L"\\MCLA_Launcher\\WebView2";
+        SHCreateDirectoryExW(nullptr, ud.c_str(), nullptr);
+    } else {
+        ud = g_dir + L"\\WebView2UserData";
+        CreateDirectoryW(ud.c_str(), nullptr);
     }
-    if (ud == g_dir + L"\\WebView2UserData") CreateDirectoryW(ud.c_str(), nullptr);
     EnvHandler* eh = new EnvHandler();
     HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(nullptr, ud.c_str(), nullptr, eh);
     eh->Release();

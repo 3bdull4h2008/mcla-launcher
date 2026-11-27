@@ -282,7 +282,7 @@
 
   .tab-title {
     color: var(--mcla-yellow);
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -294,7 +294,7 @@
   }
 
   .tab-item.active .tab-title {
-    max-width: 240px;
+    max-width: 340px;
     opacity: 1;
   }
 
@@ -662,6 +662,11 @@
 .hud-screen::-webkit-scrollbar-thumb { background: var(--mcla-bezel-border); border-radius: 3px; }
 .menu-row.key-listening .key-bind { color: var(--mcla-yellow) !important; animation: keyListenPulse 0.8s ease-in-out infinite alternate; }
 @keyframes keyListenPulse { from { opacity: 1; } to { opacity: 0.45; } }
+@keyframes mclaRingSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.tab-item.active .dash-ring { animation: mclaRingSpin 6s linear infinite; transform-origin: 50% 50%; transform-box: fill-box; }
+.tab-item.is-locked { opacity: 0.5; cursor: default; }
+.menu-row.is-locked, .menu-row.is-locked.is-selected { opacity: 0.5; cursor: default; }
+.menu-row.is-locked .text-value, .menu-row.is-locked .cycle-arrow { pointer-events: none; }
 </style>
 </head>
 <body>
@@ -708,7 +713,8 @@ window.MCLA_DEFAULT_SCHEMA = {
     "height": 446,
     "resizable": false,
     "transparent": true,
-    "decorations": false
+    "decorations": false,
+    "alwaysOnTop": false
   },
   "storageKey": "mcla_toml_config_v1",
   "tabs": [
@@ -728,129 +734,121 @@ window.MCLA_DEFAULT_SCHEMA = {
           "action": "launchGame"
         },
         {
-          "id": "nav_display",
-          "type": "nav",
-          "visible": true,
-          "label": "DISPLAY & VIDEO",
-          "targetTab": "display"
-        },
-        {
-          "id": "nav_controls",
-          "type": "nav",
-          "visible": true,
-          "label": "CONTROLS & UI",
-          "targetTab": "controls"
-        },
-        {
-          "id": "nav_more",
-          "type": "nav",
-          "visible": true,
-          "label": "FILES & LOGS",
-          "targetTab": "files"
-        },
-        {
-          "id": "exit",
+          "id": "quit",
           "type": "action",
           "visible": true,
-          "label": "EXIT LAUNCHER",
+          "label": "QUIT",
+          "sub": "CLOSE THE LAUNCHER",
           "action": "exitLauncher"
+        }
+      ],
+      "options": [
+        {
+          "key": "install_lang",
+          "label": "LANGUAGE",
+          "type": "cycle",
+          "visible": true,
+          "values": ["ENGLISH", "العربية", "FRANÇAIS", "ESPAÑOL", "DEUTSCH", "ITALIANO"],
+          "default": "ENGLISH"
+        },
+        {
+          "key": "install_source",
+          "label": "SOURCE FOLDER",
+          "type": "text",
+          "visible": true,
+          "maxLength": 260,
+          "default": ""
         }
       ]
     },
     {
       "id": "display",
-      "title": "DISPLAY",
+      "title": "DISPLAY & VIDEO",
       "icon": "display",
       "visible": true,
-      "subHeaderLeft": "< MCLA.TOML // DISPLAY >",
-      "subHeaderRight": "CVAR / VIDEO",
+      "subHeaderLeft": "< MCLA.TOML // DISPLAY & VIDEO >",
+      "subHeaderRight": "D3D12",
       "options": [
         {
-          "key": "renderer_mode",
-          "tomlSection": "graphics",
-          "cliFlag": "--renderer_mode",
-          "label": "RENDERER MODE",
+          "key": "display_mode",
+          "label": "DISPLAY MODE",
           "type": "cycle",
           "visible": true,
           "values": [
-            "AUTOMATIC",
-            "DIRECT3D 12",
-            "VULKAN"
+            "BORDERLESS FULLSCREEN",
+            "WINDOWED",
+            "EXCLUSIVE FULLSCREEN"
           ],
+          "default": "BORDERLESS FULLSCREEN",
+          "tomlSection": "display",
           "valueMap": {
-            "AUTOMATIC": "auto",
-            "DIRECT3D 12": "d3d12",
-            "VULKAN": "vulkan"
-          },
-          "default": "AUTOMATIC"
+            "BORDERLESS FULLSCREEN": "borderless_fullscreen",
+            "WINDOWED": "windowed",
+            "EXCLUSIVE FULLSCREEN": "fullscreen"
+          }
+        },
+        {
+          "key": "resolution_preset",
+          "label": "WINDOW RESOLUTION",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "1280x720 (720P)",
+            "1920x1080 (1080P)",
+            "2560x1440 (1440P)",
+            "3840x2160 (4K)"
+          ],
+          "default": "1280x720 (720P)",
+          "tomlSection": "_env",
+          "valueMap": {
+            "1280x720 (720P)": "1280x720",
+            "1920x1080 (1080P)": "1920x1080",
+            "2560x1440 (1440P)": "2560x1440",
+            "3840x2160 (4K)": "3840x2160"
+          }
         },
         {
           "key": "resolution_scale",
-          "tomlSection": "display",
-          "cliFlag": "--resolution_scale",
-          "label": "RESOLUTION SCALE",
+          "label": "RENDER SCALE",
           "type": "cycle",
           "visible": true,
           "values": [
-            "1X (720P)",
-            "2X (1440P)",
-            "3X (4K)"
+            "1x (720P)",
+            "2x (1440P)",
+            "3x (4K)"
           ],
+          "default": "1x (720P)",
           "valueMap": {
-            "1X (720P)": 1,
-            "2X (1440P)": 2,
-            "3X (4K)": 3
+            "1x (720P)": 1,
+            "2x (1440P)": 2,
+            "3x (4K)": 3
           },
-          "default": "2X (1440P)"
+          "tomlSection": "display"
         },
         {
           "key": "mcla_fps",
-          "tomlSection": "display",
-          "cliFlag": "--mcla_fps",
           "label": "FPS LIMIT",
           "type": "cycle",
           "visible": true,
           "values": [
-            "30 FPS",
-            "40 FPS",
-            "45 FPS",
-            "50 FPS",
-            "60 FPS",
-            "120 FPS",
-            "UNCAPPED"
+            "30",
+            "60",
+            "120",
+            "UNCAPPED",
+            "STOCK"
           ],
+          "default": "60",
+          "tomlSection": "game",
           "valueMap": {
-            "30 FPS": 30,
-            "40 FPS": 40,
-            "45 FPS": 45,
-            "50 FPS": 50,
-            "60 FPS": 60,
-            "120 FPS": 120,
-            "UNCAPPED": 0
-          },
-          "default": "60 FPS"
-        },
-        {
-          "key": "fullscreen",
-          "tomlSection": "display",
-          "cliFlag": "--fullscreen",
-          "label": "FULLSCREEN",
-          "type": "cycle",
-          "visible": true,
-          "values": [
-            "ON",
-            "OFF"
-          ],
-          "valueMap": {
-            "ON": true,
-            "OFF": false
-          },
-          "default": "ON"
+            "30": "30",
+            "60": "60",
+            "120": "120",
+            "UNCAPPED": "uncapped",
+            "STOCK": "0"
+          }
         },
         {
           "key": "vsync",
-          "tomlSection": "display",
-          "cliFlag": "--vsync",
           "label": "V-SYNC",
           "type": "cycle",
           "visible": true,
@@ -858,47 +856,306 @@ window.MCLA_DEFAULT_SCHEMA = {
             "ON",
             "OFF"
           ],
+          "default": "OFF",
           "valueMap": {
             "ON": true,
             "OFF": false
           },
-          "default": "ON"
+          "tomlSection": "display"
+        },
+        {
+          "key": "mcla_aspect_ratio",
+          "label": "ASPECT RATIO",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "auto",
+            "16:9",
+            "16:10",
+            "21:9",
+            "32:9",
+            "43:18"
+          ],
+          "default": "auto",
+          "tomlSection": "display",
+          "valueMap": {
+            "auto": "auto",
+            "16:9": "16:9",
+            "16:10": "16:10",
+            "21:9": "21:9",
+            "32:9": "32:9",
+            "43:18": "43:18"
+          }
+        },
+        {
+          "key": "MCLA_HUD_SCALE",
+          "label": "HUD SCALE",
+          "type": "slider",
+          "visible": true,
+          "default": 1.0,
+          "tomlSection": "_env",
+          "min": 0.5,
+          "max": 1.5,
+          "step": 0.05
+        },
+        {
+          "key": "MCLA_HDR",
+          "label": "HDR10 OUTPUT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "OFF",
+            "ON"
+          ],
+          "default": "OFF",
+          "valueMap": {
+            "OFF": 0,
+            "ON": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_display_gamma",
+          "label": "DISPLAY GAMMA",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "tv",
+            "pc"
+          ],
+          "default": "tv",
+          "tomlSection": "display",
+          "valueMap": {
+            "tv": "tv",
+            "pc": "pc"
+          }
+        },
+        {
+          "key": "mcla_motion_blur",
+          "label": "MOTION BLUR",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "display",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_depth_of_field",
+          "label": "DEPTH OF FIELD",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "display",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_hide_cursor",
+          "label": "HIDE CURSOR",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "controls",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_d3d12_msaa_line_guard",
+          "label": "MSAA LINE GUARD",
+          "type": "cycle",
+          "visible": false,
+          "values": [
+            "AUTO",
+            "OFF",
+            "ON"
+          ],
+          "default": "AUTO",
+          "tomlSection": "graphics",
+          "valueMap": {
+            "AUTO": -1,
+            "OFF": 0,
+            "ON": 1
+          }
+        },
+        {
+          "key": "MCLA_AUDIO_GAIN",
+          "label": "AUDIO GAIN",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "40%",
+            "60%",
+            "80%",
+            "100%",
+            "120%",
+            "150%",
+            "200%"
+          ],
+          "default": "80%",
+          "valueMap": {
+            "40%": 0.4,
+            "60%": 0.6,
+            "80%": 0.8,
+            "100%": 1.0,
+            "120%": 1.2,
+            "150%": 1.5,
+            "200%": 2.0
+          },
+          "tomlSection": "_env"
+        }
+      ,
+        {
+          "key": "mcla_brightness",
+          "label": "BRIGHTNESS",
+          "type": "slider",
+          "visible": true,
+          "default": 1.0,
+          "tomlSection": "display",
+          "min": 0.5,
+          "max": 1.5,
+          "step": 0.05
+        },
+        {
+          "key": "mcla_display_gamma",
+          "label": "GAMMA",
+          "type": "cycle",
+          "visible": true,
+          "values": ["TV", "PC"],
+          "default": "TV",
+          "tomlSection": "display"
+        },
+        {
+          "key": "mcla_reported_resolution",
+          "label": "REPORTED RESOLUTION",
+          "type": "cycle",
+          "visible": true,
+          "values": ["720P", "1080P", "1440P"],
+          "default": "1080P",
+          "tomlSection": "display"
+        },
+        {
+          "key": "mcla_hdr",
+          "label": "HDR10",
+          "type": "cycle",
+          "visible": true,
+          "values": ["OFF", "ON"],
+          "default": "OFF",
+          "tomlSection": "_env",
+          "valueMap": { "OFF": 0, "ON": 1 }
+        },
+        {
+          "key": "mcla_hud_scale",
+          "label": "HUD SCALE",
+          "type": "slider",
+          "visible": true,
+          "default": 1.0,
+          "tomlSection": "display",
+          "min": 0.5,
+          "max": 1.5,
+          "step": 0.05
+        }
+      ]
+    },
+    {
+      "id": "graphics",
+      "title": "GRAPHICS",
+      "icon": "graphics",
+      "visible": true,
+      "subHeaderLeft": "< MCLA.TOML // GRAPHICS >",
+      "subHeaderRight": "SHADOWS / ADVANCED",
+      "options": [
+        {
+          "key": "graphics_preset",
+          "label": "GRAPHICS PRESET",
+          "type": "cycle",
+          "visible": true,
+          "values": ["LOW", "MEDIUM", "HIGH"],
+          "default": "HIGH",
+          "tomlSection": "graphics",
+          "valueMap": { "LOW": "LOW", "MEDIUM": "MEDIUM", "HIGH": "HIGH" }
         }
       ]
     },
     {
       "id": "controls",
-      "title": "INPUT & UI",
+      "title": "CONTROLS",
       "icon": "controls",
       "visible": true,
-      "subHeaderLeft": "< MCLA.TOML // INPUT & UI >",
-      "subHeaderRight": "XINPUT / DUALSENSE",
+      "subHeaderLeft": "< KEYMAP // EACH KEY = ONE GAMEPAD BUTTON >",
+      "subHeaderRight": "GUEST DECIDES BY SCREEN",
       "options": [
         {
-          "key": "prompts",
-          "tomlSection": "input",
-          "cliFlag": "--prompts",
+          "key": "mcla_button_prompts",
           "label": "BUTTON PROMPTS",
           "type": "cycle",
           "visible": true,
           "values": [
-            "AUTO DETECT",
-            "XBOX 360",
-            "PLAYSTATION",
-            "PC KEYBOARD"
+            "auto",
+            "xbox",
+            "ps"
           ],
+          "default": "auto",
+          "tomlSection": "input",
           "valueMap": {
-            "AUTO DETECT": "auto",
-            "XBOX 360": "xbox",
-            "PLAYSTATION": "ps",
-            "PC KEYBOARD": "pc"
-          },
-          "default": "AUTO DETECT"
+            "auto": "auto",
+            "xbox": "xbox",
+            "ps": "ps",
+            "pc": "pc"
+          }
         },
         {
-          "key": "vibration",
-          "tomlSection": "input",
-          "cliFlag": "--vibration",
+          "key": "MCLA_BTN_PROMPTS_FIX",
+          "label": "BUTTON PROMPT OVERRIDE",
+          "type": "cycle",
+          "visible": false,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "valueMap": {
+            "ON": 1,
+            "OFF": 0
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_BTN_PROMPTS_PS",
+          "label": "PLAYSTATION GLYPHS (OVERRIDE)",
+          "type": "cycle",
+          "visible": false,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "valueMap": {
+            "ON": 1,
+            "OFF": 0
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_vibration",
           "label": "VIBRATION",
           "type": "cycle",
           "visible": true,
@@ -906,74 +1163,1423 @@ window.MCLA_DEFAULT_SCHEMA = {
             "ON",
             "OFF"
           ],
-          "valueMap": {
-            "ON": true,
-            "OFF": false
-          },
-          "default": "ON"
-        },
-        {
-          "key": "mcla_adaptive_triggers",
+          "default": "ON",
           "tomlSection": "input",
-          "cliFlag": "--mcla_adaptive_triggers",
-          "label": "ADAPTIVE TRIGGERS",
-          "type": "cycle",
-          "visible": true,
-          "values": [
-            "ON",
-            "OFF"
-          ],
           "valueMap": {
             "ON": true,
             "OFF": false
-          },
-          "default": "OFF"
+          }
         },
         {
-          "key": "mcla_ui_interpolate",
-          "tomlSection": "ui",
-          "cliFlag": "--mcla_ui_interpolate",
-          "label": "SMOOTH UI (INTERP)",
-          "type": "cycle",
+          "key": "mcla_left_stick_deadzone",
+          "label": "LEFT DEADZONE",
+          "type": "slider",
           "visible": true,
+          "default": 24.0,
+          "tomlSection": "input",
+          "min": 0,
+          "max": 30,
+          "step": 1
+        },
+        {
+          "key": "mcla_right_stick_deadzone",
+          "label": "RIGHT DEADZONE",
+          "type": "slider",
+          "visible": true,
+          "default": 24.0,
+          "tomlSection": "input",
+          "min": 0,
+          "max": 30,
+          "step": 1
+        },
+        {
+          "key": "mcla_key_throttle",
+          "label": "RT - RIGHT TRIGGER",
+          "type": "cycle",
           "values": [
-            "ON",
-            "OFF"
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
           ],
-          "valueMap": {
-            "ON": true,
-            "OFF": false
-          },
-          "default": "ON"
+          "default": "W",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_brake",
+          "label": "LT - LEFT TRIGGER",
+          "type": "cycle",
+          "values": [
+            "S",
+            "W",
+            "A",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "S",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_steer_left",
+          "label": "LEFT STICK LEFT",
+          "type": "cycle",
+          "values": [
+            "A",
+            "W",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "A",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_steer_right",
+          "label": "LEFT STICK RIGHT",
+          "type": "cycle",
+          "values": [
+            "D",
+            "W",
+            "A",
+            "S",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "D",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_x",
+          "label": "X - WEST BUTTON",
+          "type": "cycle",
+          "values": [
+            "C",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "C",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_right_shoulder",
+          "label": "RB - RIGHT SHOULDER",
+          "type": "cycle",
+          "values": [
+            "E",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "E",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_left_thumb",
+          "label": "LS - LEFT STICK CLICK",
+          "type": "cycle",
+          "values": [
+            "1",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "1",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_dpad_up",
+          "label": "D-PAD UP",
+          "type": "cycle",
+          "values": [
+            "Up",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Up",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_dpad_down",
+          "label": "D-PAD DOWN",
+          "type": "cycle",
+          "values": [
+            "Down",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Down",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_dpad_left",
+          "label": "D-PAD LEFT",
+          "type": "cycle",
+          "values": [
+            "Left",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Left",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_dpad_right",
+          "label": "D-PAD RIGHT",
+          "type": "cycle",
+          "values": [
+            "Right",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Right",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_a",
+          "label": "A - SOUTH BUTTON",
+          "type": "cycle",
+          "values": [
+            "Return",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Return",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_b",
+          "label": "B - EAST BUTTON",
+          "type": "cycle",
+          "values": [
+            "Escape",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Escape",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_start",
+          "label": "START BUTTON",
+          "type": "cycle",
+          "values": [
+            "Tab",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Tab",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_back",
+          "label": "BACK BUTTON",
+          "type": "cycle",
+          "values": [
+            "B",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "B",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_y",
+          "label": "Y - NORTH BUTTON",
+          "type": "cycle",
+          "values": [
+            "V",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "V",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_right_thumb",
+          "label": "RS - RIGHT STICK CLICK",
+          "type": "cycle",
+          "values": [
+            "2",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "2",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_ry_up",
+          "label": "RIGHT STICK UP",
+          "type": "cycle",
+          "values": [
+            "I",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "I",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_ry_down",
+          "label": "RIGHT STICK DOWN",
+          "type": "cycle",
+          "values": [
+            "K",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "K",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_rx_left",
+          "label": "RIGHT STICK LEFT",
+          "type": "cycle",
+          "values": [
+            "J",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "J",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_rx_right",
+          "label": "RIGHT STICK RIGHT",
+          "type": "cycle",
+          "values": [
+            "L",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "L",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_left_shoulder",
+          "label": "LB - LEFT SHOULDER",
+          "type": "cycle",
+          "values": [
+            "Q",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "Q",
+          "tomlSection": "input",
+          "visible": true
+        },
+        {
+          "key": "mcla_key_lt",
+          "label": "LT - LEFT TRIGGER (AXIS)",
+          "type": "cycle",
+          "visible": false,
+          "values": [
+            "U",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "O",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "S",
+          "tomlSection": "input"
+        },
+        {
+          "key": "mcla_key_rt",
+          "label": "RT - RIGHT TRIGGER (AXIS)",
+          "type": "cycle",
+          "visible": false,
+          "values": [
+            "O",
+            "W",
+            "A",
+            "S",
+            "D",
+            "Up",
+            "Down",
+            "Left",
+            "Right",
+            "Return",
+            "Escape",
+            "Space",
+            "Tab",
+            "Q",
+            "E",
+            "C",
+            "V",
+            "B",
+            "F",
+            "1",
+            "2",
+            "I",
+            "J",
+            "K",
+            "L",
+            "U",
+            "LShift",
+            "LCtrl"
+          ],
+          "default": "W",
+          "tomlSection": "input"
         },
         {
           "key": "mcla_intro",
-          "tomlSection": "game",
-          "cliFlag": "--mcla_intro",
-          "label": "INTRO VIDEO",
+          "label": "INTRO VIDEOS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "NORMAL",
+            "SKIP"
+          ],
+          "default": "NORMAL",
+          "tomlSection": "controls",
+          "valueMap": {
+            "NORMAL": "normal",
+            "SKIP": "skip"
+          }
+        }
+      ,
+        {
+          "key": "control_preset",
+          "label": "CONTROL PRESET",
+          "type": "cycle",
+          "visible": true,
+          "values": ["WASD", "XBOX", "CUSTOM"],
+          "default": "WASD",
+          "tomlSection": "input"
+        },
+        {
+          "key": "reset_keymap",
+          "label": "RESET KEYMAP",
+          "type": "action",
+          "visible": true,
+          "action": "resetKeymap",
+          "default": "PRESS TWICE"
+        }
+      ]
+    },
+    {
+      "id": "advanced",
+      "title": "ADVANCED",
+      "icon": "tuning",
+      "visible": true,
+      "subHeaderLeft": "< ADVANCED // ENGINE & DEBUG >",
+      "subHeaderRight": "EXPERT SETTINGS",
+      "options": [
+        {
+          "key": "renderer_mode",
+          "label": "RENDERER",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "native",
+            "legacy",
+            "capture"
+          ],
+          "default": "native",
+          "tomlSection": "graphics",
+          "valueMap": {
+            "native": "native",
+            "legacy": "legacy",
+            "capture": "capture"
+          }
+        },
+        {
+          "key": "MCLA_SMALL_FS_SWAP",
+          "label": "720P BACKBUFFER",
           "type": "cycle",
           "visible": true,
           "values": [
             "ON",
             "OFF"
           ],
+          "default": "OFF",
+          "valueMap": {
+            "ON": 1,
+            "OFF": 0
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_race_shadows",
+          "label": "RACE SHADOWS (cvar)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "renderer",
           "valueMap": {
             "ON": true,
             "OFF": false
-          },
-          "default": "ON"
+          }
         },
         {
-          "key": "deadzone",
-          "tomlSection": "input",
-          "cliFlag": "--deadzone",
-          "label": "STEERING DEADZONE",
+          "key": "mcla_fast_car_shadows",
+          "label": "FAST CAR SHADOWS (cvar)",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "tomlSection": "renderer",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_fullscreen_blur",
+          "label": "FULLSCREEN BLUR",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "renderer",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "MCLA_NO_GAMMA_LUT",
+          "label": "DISPLAY GAMMA LUT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_NO_RESOLVED_MIPS",
+          "label": "RESOLVED TEXTURE MIPS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_NO_CPUEXPAND_MIPS",
+          "label": "CPU TEXTURE MIPS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_NO_OCCLUSION_QUERY",
+          "label": "HARDWARE OCCLUSION CULLING",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_settings_menu",
+          "label": "IN-GAME SETTINGS MENU",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "ui",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_script_pad_latch_ms",
+          "label": "PAD LATCH (ms)",
           "type": "slider",
           "visible": true,
+          "default": 100,
+          "tomlSection": "input",
           "min": 0,
-          "max": 100,
-          "step": 5,
-          "default": 15
+          "max": 500,
+          "step": 10
+        },
+        {
+          "key": "mcla_keymap_log",
+          "label": "LOG KEYMAP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "tomlSection": "input",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_dt_max",
+          "label": "DT MAX",
+          "type": "slider",
+          "visible": true,
+          "default": 0.125,
+          "tomlSection": "mcla",
+          "min": 0.01,
+          "max": 0.5,
+          "step": 0.01
+        },
+        {
+          "key": "mcla_float_clock",
+          "label": "FLOAT CLOCK",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_pace_at_swap",
+          "label": "PACE AT SWAP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_swap_unlock",
+          "label": "SWAP UNLOCK",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_physics_continuous",
+          "label": "CONTINUOUS PHYSICS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_checkpoint_sweep",
+          "label": "CHECKPOINT SWEEP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_poll_wait",
+          "label": "POLL WAIT",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_poll_spin_us",
+          "label": "POLL SPIN (us)",
+          "type": "slider",
+          "visible": true,
+          "default": 40,
+          "tomlSection": "mcla",
+          "min": 0,
+          "max": 2000,
+          "step": 10
+        },
+        {
+          "key": "mcla_poll_tail_us",
+          "label": "POLL TAIL (us)",
+          "type": "slider",
+          "visible": true,
+          "default": 400,
+          "tomlSection": "mcla",
+          "min": 0,
+          "max": 2000,
+          "step": 10
+        },
+        {
+          "key": "mcla_pump_wake_on_demand",
+          "label": "PUMP WAKE ON DEMAND",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "tomlSection": "mcla",
+          "valueMap": {
+            "ON": true,
+            "OFF": false
+          }
+        },
+        {
+          "key": "mcla_pump_wake_pause_s",
+          "label": "PUMP WAKE PAUSE (s)",
+          "type": "slider",
+          "visible": true,
+          "default": 60,
+          "tomlSection": "mcla",
+          "min": 0,
+          "max": 3600,
+          "step": 10
+        },
+        {
+          "key": "mcla_pump_sleep_max_ms",
+          "label": "PUMP SLEEP MAX (ms)",
+          "type": "slider",
+          "visible": true,
+          "default": -1,
+          "tomlSection": "mcla",
+          "min": -1,
+          "max": 500,
+          "step": 1
+        },
+        {
+          "key": "MCLA_NO_RENDER_2STAGE",
+          "label": "TWO-STAGE RENDERING",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_NO_MT_BURSTS",
+          "label": "PARALLEL DRAW RECORDING",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_MT_PREP",
+          "label": "MULTI-THREADED DRAW PREP",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "OFF",
+          "valueMap": {
+            "ON": 1,
+            "OFF": 0
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "MCLA_NO_ADAPTIVE_AUDIO",
+          "label": "ADAPTIVE AUDIO BUFFER",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ON",
+            "OFF"
+          ],
+          "default": "ON",
+          "valueMap": {
+            "ON": 0,
+            "OFF": 1
+          },
+          "tomlSection": "_env"
+        },
+        {
+          "key": "mcla_patch_groups",
+          "label": "PATCH GROUPS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "all",
+            "none",
+            "sdk,guest,native"
+          ],
+          "default": "all",
+          "tomlSection": "mcla"
         }
       ]
     },
@@ -982,9 +2588,37 @@ window.MCLA_DEFAULT_SCHEMA = {
       "title": "MORE",
       "icon": "files",
       "visible": true,
-      "subHeaderLeft": "< MCLA-RECOMP // TOOLS >",
-      "subHeaderRight": "545407F8",
+      "subHeaderLeft": "< MCLA-RECOMP // PROFILE / TOOLS >",
+      "subHeaderRight": "",
       "options": [
+        {
+          "key": "mcla_profile_name",
+          "label": "PROFILE NAME",
+          "type": "text",
+          "visible": true,
+          "values": [],
+          "default": "SWA",
+          "valueMap": {},
+          "maxLength": 15,
+          "pattern": "^[ -~]{1,15}$",
+          "tomlSection": "profile"
+        },
+        {
+          "key": "MCLA_NO_SIGNIN",
+          "label": "LOCAL SIGN-IN SLOTS",
+          "type": "cycle",
+          "visible": true,
+          "values": [
+            "ALL FOUR",
+            "SLOT 0 ONLY"
+          ],
+          "default": "ALL FOUR",
+          "valueMap": {
+            "ALL FOUR": 0,
+            "SLOT 0 ONLY": 1
+          },
+          "tomlSection": "_env"
+        },
         {
           "key": "open_folder",
           "label": "OPEN GAME FOLDER",
@@ -992,6 +2626,14 @@ window.MCLA_DEFAULT_SCHEMA = {
           "visible": true,
           "action": "browseFiles",
           "default": "MCLA.EXE DIR"
+        },
+        {
+          "key": "change_game_folder",
+          "label": "CHANGE GAME FOLDER",
+          "type": "action",
+          "visible": true,
+          "action": "changeGameDir",
+          "default": "SELECT FOLDER"
         },
         {
           "key": "build_logs",
@@ -1025,7 +2667,60 @@ window.MCLA_DEFAULT_SCHEMA = {
           "action": "editCliFlags",
           "default": "--MCLA_FPS=60"
         }
+      ,
+        {
+          "key": "backup_config",
+          "label": "BACKUP SETTINGS",
+          "type": "action",
+          "visible": true,
+          "action": "backupConfig",
+          "default": "mcla.toml.bak"
+        },
+        {
+          "key": "restore_config",
+          "label": "RESTORE SETTINGS",
+          "type": "action",
+          "visible": true,
+          "action": "restoreConfig",
+          "default": "PRESS TWICE"
+        },
+        {
+          "key": "check_update",
+          "label": "CHECK UPDATE",
+          "type": "action",
+          "visible": true,
+          "action": "checkUpdate",
+          "default": "GITHUB"
+        }
       ]
+    },
+    {
+      "id": "launcher",
+      "title": "LAUNCHER",
+      "icon": "tuning",
+      "visible": true,
+      "subHeaderLeft": "< LAUNCHER // LANGUAGE >",
+      "subHeaderRight": "UI",
+      "options": [
+        {
+          "key": "ui_language",
+          "label": "LANGUAGE",
+          "type": "cycle",
+          "visible": true,
+          "values": ["ENGLISH", "العربية", "FRANÇAIS", "ESPAÑOL", "DEUTSCH", "ITALIANO"],
+          "default": "ENGLISH"
+        }
+      ]
+    },
+    {
+      "id": "mods",
+      "title": "MODS",
+      "icon": "files",
+      "visible": true,
+      "isMods": true,
+      "subHeaderLeft": "< MODS // MODLIST.TXT >",
+      "subHeaderRight": "P4-01",
+      "options": []
     }
   ]
 };
@@ -1053,6 +2748,22 @@ function buildResolvedValues(schema, cfg) {
       if (opt.tomlSection) {
         if (!out[opt.tomlSection]) out[opt.tomlSection] = {};
         out[opt.tomlSection][opt.key] = mapped;
+      }
+      if (opt.key === 'resolution_preset' && typeof mapped === 'string' && mapped.indexOf('x') > 0) {
+        const parts = mapped.split('x');
+        if (!out['_env']) out['_env'] = {};
+        out['_env']['MCLA_WINDOW_W'] = parts[0];
+        out['_env']['MCLA_WINDOW_H'] = parts[1];
+      }
+      if (opt.key === 'mcla_key_throttle') {
+        if (!out['input']) out['input'] = {};
+        out['input']['mcla_key_throttle'] = mapped;
+        out['input']['mcla_key_rt'] = mapped;
+      }
+      if (opt.key === 'mcla_key_brake') {
+        if (!out['input']) out['input'] = {};
+        out['input']['mcla_key_brake'] = mapped;
+        out['input']['mcla_key_lt'] = mapped;
       }
       if (opt.cliFlag) {
         cliArgs.push(`${opt.cliFlag}=${mapped}`);
@@ -1103,20 +2814,69 @@ window.MCLALauncherAPI = {
   },
   getConfig: () => JSON.parse(JSON.stringify(activeConfig)),
   getResolvedConfig: () => buildResolvedValues(activeSchema, activeConfig),
+  /* Game CVar dump (mcla.exe MCLA_DUMP_CVARS): every CVar the static schema does not already show gets a row in an ADVANCED tab, grouped by the game's category. */
+  loadCVars: (list) => {
+    if (!Array.isArray(list)) return;
+    const known = new Set();
+    (activeSchema.tabs || []).forEach(t => (t.options || []).forEach(o => known.add(o.key.toLowerCase())));
+    const options = [];
+    list.forEach(cv => {
+      if (!cv || typeof cv.name !== 'string' || known.has(cv.name.toLowerCase())) return;
+      const base = { key: cv.name, label: cv.name.toUpperCase(), sub: cv.description || '', visible: true, tomlSection: cv.category || 'MCLA' };
+      if (cv.type === 'bool') {
+        options.push({ ...base, type: 'cycle', values: ['ON', 'OFF'], valueMap: { ON: 'true', OFF: 'false' }, default: cv.default === 'true' ? 'ON' : 'OFF' });
+      } else {
+        const num = cv.type === 'int' || cv.type === 'float';
+        options.push({ ...base, type: 'text', maxLength: 120, values: [], valueMap: {}, default: num ? Number(cv.default) : cv.default });
+      }
+    });
+    if (!options.length) return;
+    const schema = JSON.parse(JSON.stringify(activeSchema));
+    const existingAdv = (schema.tabs || []).find(t => t.id === 'advanced');
+    if (existingAdv) {
+      existingAdv.options = (existingAdv.options || []).concat(options);
+    } else {
+      const tab = { id: 'advanced', title: 'ADVANCED', icon: 'tuning', visible: true, subHeaderLeft: '< MCLA.TOML // GAME CVARS >', subHeaderRight: 'FROM MCLA.EXE', options };
+      schema.tabs = (schema.tabs || []).concat([tab]);
+    }
+    const home = schema.tabs.find(t => t.isHome);
+    if (home && Array.isArray(home.items) && !home.items.some(i => i.id === 'nav_advanced')) {
+      const at = home.items.findIndex(i => i.type === 'action' && i.action === 'exitLauncher');
+      home.items.splice(at < 0 ? home.items.length : at, 0, { id: 'nav_advanced', type: 'nav', visible: true, label: 'ADVANCED CVARS', targetTab: 'advanced' });
+    }
+    const prev = JSON.parse(JSON.stringify(activeConfig));
+    activeSchema = schema;
+    const freshDefaults = buildDefaultConfig(activeSchema);
+    for (const tabId of Object.keys(freshDefaults)) {
+      if (!prev[tabId]) prev[tabId] = freshDefaults[tabId];
+      else {
+        for (const k of Object.keys(freshDefaults[tabId])) {
+          if (prev[tabId][k] === undefined) prev[tabId][k] = freshDefaults[tabId][k];
+        }
+      }
+    }
+    activeConfig = prev;
+    initHeaderTabs();
+    renderScreen('none');
+  },
   /* Accepts either UI-grouped { display: {...} }, TOML-grouped { graphics: {...}, display: {...} }, or flat { renderer_mode: 'd3d12', ... } */
   loadConfig: (cfg) => {
     if (!cfg || typeof cfg !== 'object') return;
+    const findKeyCase = (obj, targetLower) => {
+      if (!obj || typeof obj !== 'object') return undefined;
+      for (const k of Object.keys(obj)) {
+        if (k.toLowerCase() === targetLower) return obj[k];
+      }
+      return undefined;
+    };
     (activeSchema.tabs || []).forEach(tab => {
       if (!tab.options || !activeConfig[tab.id]) return;
       tab.options.forEach(opt => {
+        const optLower = opt.key.toLowerCase();
         let candidate;
-        if (cfg[tab.id] && Object.prototype.hasOwnProperty.call(cfg[tab.id], opt.key)) {
-          candidate = cfg[tab.id][opt.key];
-        } else if (opt.tomlSection && cfg[opt.tomlSection] && Object.prototype.hasOwnProperty.call(cfg[opt.tomlSection], opt.key)) {
-          candidate = cfg[opt.tomlSection][opt.key];
-        } else if (Object.prototype.hasOwnProperty.call(cfg, opt.key)) {
-          candidate = cfg[opt.key];
-        }
+        if (cfg[tab.id]) candidate = findKeyCase(cfg[tab.id], optLower);
+        if (candidate === undefined && opt.tomlSection && cfg[opt.tomlSection]) candidate = findKeyCase(cfg[opt.tomlSection], optLower);
+        if (candidate === undefined) candidate = findKeyCase(cfg, optLower);
         const resolvedVal = resolveIncomingOptionValue(opt, candidate);
         if (resolvedVal !== undefined) activeConfig[tab.id][opt.key] = resolvedVal;
       });
@@ -1128,6 +2888,14 @@ window.MCLALauncherAPI = {
       activeConfig[section][key] = value;
       renderScreen('none');
     }
+  },
+  loadMods: (data) => {
+    if (!data || typeof data !== 'object') return;
+    window.__mclaModsState = {
+      modsDir: data.modsDir || '',
+      mods: Array.isArray(data.mods) ? data.mods : []
+    };
+    if (currentTab === 'mods') renderScreen('none');
   },
   setInputMode: (mode) => {
     if (activeConfig.controls) activeConfig.controls.prompts = mode;
@@ -1144,10 +2912,42 @@ window.MCLALauncherAPI = {
     document.documentElement.classList.toggle('transparent-window', on);
     document.body.classList.toggle('transparent-window', on);
   },
+  loadInstallStatus: (s) => {
+    window.__mclaInstallStatus = s || null;
+    window.__mclaInstallReady = !!(s && s.ready);
+    window.__mclaInstallRefresh();
+    window.__mclaApplyLock();
+  },
+  setInstallLanguage: (lang) => {
+    window.__mclaInstallLang = lang === 'ar' ? 'ar' : 'en';
+    if (activeConfig.main) activeConfig.main.install_lang = Object.keys(MCLA_LANG_CODES).find(k => MCLA_LANG_CODES[k] === window.__mclaInstallLang) || 'ENGLISH';
+    if (activeConfig.launcher) activeConfig.launcher.ui_language = Object.keys(MCLA_LANG_CODES).find(k => MCLA_LANG_CODES[k] === window.__mclaInstallLang) || 'ENGLISH';
+    document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+    window.__mclaInstallRefresh();
+  },
+  setInstallSource: (p) => {
+    window.__mclaInstallSource = p || '';
+    if (activeConfig.main) activeConfig.main.install_source = p || '';
+    window.__mclaInstallRefresh();
+  },
+  setInstallProgress: (pct, label) => {
+    window.__mclaInstallProgress = Math.max(0, Math.min(100, Number(pct) || 0));
+    window.__mclaInstallPhase = label || '';
+    window.__mclaInstallRefresh();
+  },
+  installFinished: (ok, err) => {
+    window.__mclaInstallPhase = ok ? 'done' : 'error';
+    window.__mclaInstallError = ok ? '' : (err || 'Install failed');
+    window.__mclaInstallRefresh();
+  },
+  logError: (kind, detail) => window.MCLALauncherAPI.emitAction('logError', { kind: kind, detail: detail }),
   onAction: (fn) => {
     if (typeof fn === 'function') actionListeners.push(fn);
   },
   emitAction: (actionName, payload) => {
+    if (actionName === 'optionChanged' || actionName === 'saveConfig' || actionName === 'restoreDefaults' ||
+        actionName === 'applyGraphicsPreset' || actionName === 'applyControlPreset') window.__mclaDirty = true;
+    if (actionName === 'launchGame' || actionName === 'saveConfig') window.__mclaDirty = false;
     try {
       localStorage.setItem(activeSchema.storageKey, JSON.stringify(activeConfig));
     } catch (e) {}
@@ -1279,8 +3079,8 @@ function pollGamepadLoop() {
         renderFooterAndShoulders();
       }
       const rising = mask & ~lastGamepadBtnMask;
-      if (rising & (1 << 4)) document.getElementById('btnPrevTab').click();
-      if (rising & (1 << 5)) document.getElementById('btnNextTab').click();
+      if (rising & (1 << 4)) prevTab();
+      if (rising & (1 << 5)) nextTab();
       if (rising & (1 << 12)) moveSelection(-1);
       if (rising & (1 << 13)) moveSelection(1);
       if (rising & (1 << 0)) activateSelectedRow();
@@ -1294,7 +3094,7 @@ function pollGamepadLoop() {
 requestAnimationFrame(pollGamepadLoop);
 
 function makeDashedIconSvg(symbol, active, size) {
-  const col = active ? '#e8de2a' : 'rgba(195, 184, 42, 0.54)';
+  const col = active ? '#d6e93a' : 'rgba(196, 220, 60, 0.46)';
   const bgFill = active ? 'rgba(30, 32, 12, 0.85)' : 'rgba(18, 20, 14, 0.45)';
   let inner = '';
   if (symbol === 'play') {
@@ -1315,7 +3115,7 @@ function makeDashedIconSvg(symbol, active, size) {
 
   return `<svg width="${size}" height="${size}" viewBox="0 0 36 36">
     <circle cx="18" cy="18" r="15" fill="${bgFill}"/>
-    <circle cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="2.5" stroke-dasharray="6.2 3.5"/>
+    <circle class="dash-ring" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="2.5" stroke-dasharray="6.2 3.5"/>
     ${inner}
   </svg>`;
 }
@@ -1332,6 +3132,7 @@ function initHeaderTabs() {
     btn.addEventListener('click', () => switchTab(tab.id));
     strip.appendChild(btn);
   });
+  window.__mclaApplyLock();
 }
 
 function updateHeaderTabsState() {
@@ -1378,6 +3179,7 @@ document.addEventListener('mousedown', (e) => {
 
 function switchTab(nextTabId, direction) {
   if (nextTabId === currentTab || isTransitioning) return;
+  if (!window.__mclaInstallReady && nextTabId !== 'main' && currentTab !== 'main') return;
   cancelKeyListening();
   isTransitioning = true;
 
@@ -1459,12 +3261,20 @@ function moveSelection(delta) {
   }
 }
 
+function formatSliderVal(opt, v) {
+  const num = Number(v);
+  if (Number.isNaN(num)) return String(v);
+  const rounded = Math.round(num * 100) / 100;
+  return (opt.max <= 2.5) ? rounded.toFixed(2) + 'x' : String(rounded) + '%';
+}
+
 function adjustSelected(delta) {
   const rows = document.getElementById('hudScreen').querySelectorAll('.menu-row');
   const row = rows[selectedRowIdx];
-  if (!row) return;
+  if (!row || row.classList.contains('is-locked')) return;
   const tabObj = activeSchema.tabs.find(t => t.id === currentTab) || activeSchema.tabs[0];
-  const opt = (tabObj.options || [])[selectedRowIdx];
+  const visibleOpts = (tabObj.options || []).filter(o => o.visible !== false);
+  const opt = visibleOpts[selectedRowIdx];
   if (!opt) return;
   let nextVal;
   if (opt.type === 'cycle' && !String(opt.key).startsWith('mcla_key_')) {
@@ -1474,19 +3284,35 @@ function adjustSelected(delta) {
     nextVal = values[(cur + delta + values.length) % values.length];
   } else if (opt.type === 'slider') {
     const step = Number(opt.step) || 5;
-    nextVal = Math.max(opt.min, Math.min(opt.max, Number(activeConfig[tabObj.id][opt.key]) + delta * step));
+    nextVal = Math.max(opt.min, Math.min(opt.max, Math.round((Number(activeConfig[tabObj.id][opt.key]) + delta * step) * 100) / 100));
   } else {
     return;
   }
   activeConfig[tabObj.id][opt.key] = nextVal;
+  if (opt.key === 'install_lang') {
+    window.__mclaInstallLang = mclaLangCode(nextVal);
+    updateRowValueUI(row, opt, nextVal);
+    window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
+    window.__mclaInstallRefresh();
+    return;
+  }
+  if (opt.key === 'ui_language') {
+    window.__mclaInstallLang = mclaLangCode(nextVal);
+    updateRowValueUI(row, opt, nextVal);
+    window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
+    document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+    return;
+  }
   updateRowValueUI(row, opt, nextVal);
-  window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: nextVal });
+  if (opt.key === 'graphics_preset') window.MCLALauncherAPI.emitAction('applyGraphicsPreset', { preset: nextVal });
+  else if (opt.key === 'control_preset') window.MCLALauncherAPI.emitAction('applyControlPreset', { preset: nextVal });
+  else window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: nextVal });
 }
 
 function activateSelectedRow() {
   const rows = document.getElementById('hudScreen').querySelectorAll('.menu-row');
   const row = rows[selectedRowIdx];
-  if (!row) return;
+  if (!row || row.classList.contains('is-locked')) return;
   const bind = row.querySelector('.key-bind');
   const text = row.querySelector('.text-value');
   if (bind) bind.click(); else if (text) text.focus(); else row.click();
@@ -1544,7 +3370,7 @@ function renderFooterAndShoulders() {
     footer.querySelector('#btnFootBack').addEventListener('click', () => switchTab('main', 'prev'));
     footer.querySelector('#btnFootApply').addEventListener('click', () => {
       window.MCLALauncherAPI.emitAction('saveConfig', activeConfig);
-      showToast('CONFIG SAVED');
+      showToast('SETTINGS SAVED & APPLIED');
       switchTab('main', 'prev');
     });
   }
@@ -1563,9 +3389,199 @@ function updateRowValueUI(row, opt, newVal) {
     const pct = Math.round(((newVal - opt.min) / (opt.max - opt.min)) * 100);
     const pctSpan = row.querySelector('.thin-slider-pct');
     const fillEl = row.querySelector('.thin-slider-fill');
-    if (pctSpan) pctSpan.textContent = newVal + '%';
+    if (pctSpan) pctSpan.textContent = formatSliderVal(opt, newVal);
     if (fillEl) fillEl.style.width = pct + '%';
   }
+}
+
+const MCLA_LANG_CODES = {'ENGLISH':'en','العربية':'ar','FRANÇAIS':'fr','ESPAÑOL':'es','DEUTSCH':'de','ITALIANO':'it'};
+function mclaLangCode(v) { return MCLA_LANG_CODES[v] || 'en'; }
+function mclaCvarGroup(k) {
+  if (/audio|xma|sound|music|voice|gain/i.test(k)) return 'AUDIO';
+  if (/render|shader|shadow|texture|gamma|hdr|color|colour|post|lod|fx/i.test(k)) return 'RENDER';
+  if (/net|xam|save|port|input|key|game|profile/i.test(k)) return 'ENGINE';
+  return 'DEBUG';
+}
+const MCLA_BAD_INPUT_MAP = {
+  'locked-row': 'INSTALL THE GAME FIRST',
+  'bad-iso': 'SELECT A VALID .ISO FILE',
+  'missing-source': 'CHOOSE A SOURCE FOLDER',
+  'bad-path': 'INVALID FOLDER PATH',
+  'invalid-language': 'LANGUAGE RESET TO ENGLISH',
+  'hash-mismatch': 'FILES CHANGED — REINSTALL',
+  'install-failed': 'INSTALL FAILED — CHECK LOG',
+  'backup-failed': 'BACKUP FAILED',
+  'reset-not-confirmed': 'PRESS AGAIN TO CONFIRM',
+  'quit-dirty': 'UNSAVED SETTINGS — SAVE FIRST',
+  'unknown': 'ACTION IGNORED'
+};
+window.__mclaLauncherErrors = [];
+window.__mclaPadState = { a: false, b: false, up: false, down: false, lb: false, rb: false };
+setInterval(() => {
+  if (!navigator.getGamepads) return;
+  const pads = navigator.getGamepads();
+  const p = pads && Array.from(pads).find(g => g && g.connected);
+  if (!p) return;
+  const s = window.__mclaPadState;
+  const edge = (name, val, fn) => { if (val && !s[name]) fn(); s[name] = val; };
+  edge('lb', !!p.buttons[4]?.pressed, () => { if (typeof prevTab === 'function') prevTab(); });
+  edge('rb', !!p.buttons[5]?.pressed, () => { if (typeof nextTab === 'function') nextTab(); });
+  edge('a', !!p.buttons[0]?.pressed, () => { if (typeof activateSelectedRow === 'function') activateSelectedRow(); });
+  edge('b', !!p.buttons[1]?.pressed, () => { if (typeof switchTab === 'function') switchTab('main', 'prev'); });
+  const ay = p.axes[1] || 0;
+  edge('up', ay < -0.5, () => moveSelection(-1));
+  edge('down', ay > 0.5, () => moveSelection(1));
+}, 60);
+function mclaBadInput(kind, detail) {
+  const msg = MCLA_BAD_INPUT_MAP[kind] || MCLA_BAD_INPUT_MAP.unknown;
+  window.__mclaLauncherErrors.push({ kind, detail: detail || '', at: new Date().toISOString() });
+  if (window.MCLALauncherAPI && window.MCLALauncherAPI.logError) window.MCLALauncherAPI.logError(kind, detail || '');
+  if (typeof showToast === 'function') showToast(msg);
+  return msg;
+}
+window.__mclaInstallReady = false;
+window.__mclaInstallLang = 'en';
+window.__mclaInstallSource = '';
+window.__mclaInstallStatus = null;
+window.__mclaInstallProgress = 0;
+window.__mclaInstallPhase = '';
+window.__mclaInstallError = '';
+const MCLA_INSTALL_STRINGS = {
+  en: {
+    welcome: 'WELCOME', welcomeSub: 'FIRST TIME SETUP — FOLLOW THE STEPS BELOW',
+    lang: 'LANGUAGE', source: 'SOURCE FOLDER', sourceSub: 'FOLDER WITH THE GAME ISO',
+    choose: 'CHOOSE FOLDER', install: 'INSTALL GAME', cancel: 'CANCEL',
+    open: 'OPEN', start: 'START', back: 'BACK', firstTime: 'FIRST TIME',
+    status: 'STATUS', checking: 'CHECKING INSTALLATION…', complete: 'FILES READY — CONFIRM INSTALL',
+    incomplete: 'INSTALLATION INCOMPLETE', ready: 'READY — PRESS CONTINUE',
+    continue: 'CONTINUE TO GAME', verify: 'VERIFYING…', copy: 'EXTRACTING…',
+    error: 'INSTALL FAILED', missing: 'MISSING'
+  },
+  ar: {
+    welcome: 'مرحباً', welcomeSub: 'الإعداد الأول — اتبع الخطوات بالتحت',
+    lang: 'اللغة', source: 'مجلد المصدر', sourceSub: 'المجلد اللي فيه ISO اللعبة',
+    choose: 'اختر مجلد', install: 'تثبيت اللعبة', cancel: 'إلغاء',
+    open: 'فتح', start: 'بدء', back: 'رجوع', firstTime: 'أول مرة',
+    status: 'الحالة', checking: 'جاري فحص التثبيت…', complete: 'الملفات جاهزة — أكّد التثبيت',
+    incomplete: 'التثبيت غير مكتمل', ready: 'جاهز — اضغط متابعة',
+    continue: 'متابعة إلى اللعبة', verify: 'جاري التحقق…', copy: 'جاري الاستخراج…',
+    error: 'فشل التثبيت', missing: 'مفقود'
+  },
+  fr: {
+    welcome: 'BIENVENUE', welcomeSub: 'PREMIÈRE INSTALLATION — SUIVEZ LES ÉTAPES',
+    lang: 'LANGUE', source: 'DOSSIER SOURCE', sourceSub: 'DOSSIER CONTENANT L ISO',
+    choose: 'CHOISIR', install: 'INSTALLER', cancel: 'ANNULER',
+    open: 'OUVRIR', start: 'DÉMARRER', back: 'RETOUR', firstTime: '1ÈRE FOIS',
+    status: 'ÉTAT', checking: 'VÉRIFICATION…', complete: 'FICHIERS PRÊTS — CONFIRMER',
+    incomplete: 'INSTALLATION INCOMPLÈTE', ready: 'PRÊT — CONTINUER',
+    continue: 'ALLER AU JEU', verify: 'VÉRIFICATION…', copy: 'EXTRACTION…',
+    error: 'ÉCHEC', missing: 'MANQUANT'
+  },
+  es: {
+    welcome: 'BIENVENIDO', welcomeSub: 'PRIMERA INSTALACIÓN — SIGUE LOS PASOS',
+    lang: 'IDIOMA', source: 'CARPETA ORIGEN', sourceSub: 'CARPETA CON EL ISO',
+    choose: 'ELEGIR', install: 'INSTALAR', cancel: 'CANCELAR',
+    open: 'ABRIR', start: 'INICIAR', back: 'VOLVER', firstTime: '1ª VEZ',
+    status: 'ESTADO', checking: 'COMPROBANDO…', complete: 'ARCHIVOS LISTOS — CONFIRMAR',
+    incomplete: 'INSTALACIÓN INCOMPLETA', ready: 'LISTO — CONTINUAR',
+    continue: 'IR AL JUEGO', verify: 'VERIFICANDO…', copy: 'EXTRAYENDO…',
+    error: 'FALLÓ', missing: 'FALTA'
+  },
+  de: {
+    welcome: 'WILLKOMMEN', welcomeSub: 'ERSTE INSTALLATION — SCHRITTE FOLGEN',
+    lang: 'SPRACHE', source: 'QUELLORDNER', sourceSub: 'ORDNER MIT DEM ISO',
+    choose: 'AUSWÄHLEN', install: 'INSTALLIEREN', cancel: 'ABBRECHEN',
+    open: 'ÖFFNEN', start: 'START', back: 'ZURÜCK', firstTime: 'ZUM ERSTEN MAL',
+    status: 'STATUS', checking: 'PRÜFUNG…', complete: 'DATEIEN BEREIT — BESTÄTIGEN',
+    incomplete: 'INSTALLATION UNVOLLSTÄNDIG', ready: 'BEREIT — WEITER',
+    continue: 'ZUM SPIEL', verify: 'PRÜFEN…', copy: 'ENTPACKEN…',
+    error: 'FEHLGESCHLAGEN', missing: 'FEHLT'
+  },
+  it: {
+    welcome: 'BENVENUTO', welcomeSub: 'PRIMA INSTALLAZIONE — SEGUI I PASSI',
+    lang: 'LINGUA', source: 'CARTELLA SORGENTE', sourceSub: 'CARTELLA CON L ISO',
+    choose: 'SCEGLI', install: 'INSTALLA', cancel: 'ANNULLA',
+    open: 'APRI', start: 'AVVIA', back: 'INDIETRO', firstTime: 'PRIMA VOLTA',
+    status: 'STATO', checking: 'CONTROLLO…', complete: 'FILE PRONTI — CONFERMA',
+    incomplete: 'INSTALLAZIONE INCOMPLETA', ready: 'PRONTO — CONTINUA',
+    continue: 'VAI AL GIOCO', verify: 'VERIFICA…', copy: 'ESTRAZIONE…',
+    error: 'FALLITO', missing: 'MANCANTE'
+  }
+};
+window.__mclaInstallStrings = () => MCLA_INSTALL_STRINGS[window.__mclaInstallLang] || MCLA_INSTALL_STRINGS.en;
+window.__mclaInstallRefresh = () => { if (currentTab === 'install') renderScreen('none'); };
+window.__mclaApplyLock = () => {
+  const ready = window.__mclaInstallReady;
+  document.querySelectorAll('.tab-item').forEach(btn => {
+    btn.classList.toggle('is-locked', !ready && btn.dataset.tabId !== 'main');
+  });
+  document.querySelectorAll('.menu-row').forEach(row => {
+    row.classList.toggle('is-locked', !ready && row.dataset.exempt !== '1');
+  });
+  document.querySelectorAll('.text-value').forEach(input => {
+    input.disabled = !ready && !(input.closest('.menu-row') && input.closest('.menu-row').dataset.exempt === '1');
+  });
+};
+
+function renderSetupRows(screen, tabObj, animClass) {
+  const S = window.__mclaInstallStrings();
+  const st = window.__mclaInstallStatus || {};
+  document.getElementById('hudScreen').dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+  const sub = document.createElement('div');
+  sub.className = 'sub-header-bar';
+  sub.innerHTML = `<span>&lt; ${S.welcome} // MCLA SETUP &gt;</span><span class="sub-header-dim">${window.__mclaInstallPhase === 'verify' ? S.verify : (window.__mclaInstallPhase === 'copy' ? S.copy : S.firstTime)}</span>`;
+  screen.appendChild(sub);
+  const mkRow = (label, subLabel, value, cls, onClick) => {
+    const row = document.createElement('div');
+    row.className = 'menu-row' + (animClass ? ' ' + animClass : '');
+    row.dataset.exempt = '1';
+    row.style.setProperty('--row-idx', screen.querySelectorAll('.menu-row').length);
+    row.innerHTML = `<div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${label}</span>${subLabel ? `<span class="row-sub-label">${subLabel}</span>` : ''}</div></div>${value !== undefined ? `<div class="row-right"><span class="cycle-val ${cls || ''}">${value}</span></div>` : ''}`;
+    if (onClick) row.addEventListener('click', onClick);
+    attachRowEvents(row, screen.querySelectorAll('.menu-row').length);
+    screen.appendChild(row);
+    return row;
+  };
+  mkRow(S.lang, '', activeConfig.main.install_lang, 'is-on', () => {
+    const cur = activeConfig.main.install_lang;
+    const vals = ['ENGLISH', 'العربية', 'FRANÇAIS', 'ESPAÑOL', 'DEUTSCH', 'ITALIANO'];
+    const nv = vals[(vals.indexOf(cur) + 1) % vals.length];
+    activeConfig.main.install_lang = nv;
+    window.__mclaInstallLang = mclaLangCode(nv);
+    document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+    window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
+    renderScreen('none');
+  });
+  const srcRow = document.createElement('div');
+  srcRow.className = 'menu-row' + (animClass ? ' ' + animClass : '');
+  srcRow.dataset.exempt = '1';
+  srcRow.style.setProperty('--row-idx', screen.querySelectorAll('.menu-row').length);
+  srcRow.innerHTML = `<div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${S.source}</span><span class="row-sub-label">${S.sourceSub}</span></div></div><div class="row-right"><input class="text-value" type="text" maxlength="260" spellcheck="false" value="${String(activeConfig.main.install_source || '').replace(/"/g, '&quot;')}" /></div>`;
+  const srcInput = srcRow.querySelector('.text-value');
+  srcInput.addEventListener('change', () => {
+    activeConfig.main.install_source = srcInput.value;
+    window.MCLALauncherAPI.emitAction('setInstallSource', { source: srcInput.value });
+  });
+  attachRowEvents(srcRow, screen.querySelectorAll('.menu-row').length);
+  screen.appendChild(srcRow);
+  mkRow(S.choose, '', S.open, '', () => {
+    window.MCLALauncherAPI.emitAction('chooseInstallSource', {});
+    showToast(S.choose);
+  });
+  mkRow(S.choose + ' ISO', '', 'ISO', '', () => {
+    window.MCLALauncherAPI.emitAction('chooseIso', {});
+    showToast(S.choose + ' ISO');
+  });
+  mkRow(S.install, window.__mclaInstallError || (Array.isArray(st.missing) && st.missing.length ? st.missing.join(' / ') : (st.complete ? S.complete : S.checking)), S.start, '', () => {
+    window.__mclaInstallPhase = 'copy';
+    window.__mclaInstallError = '';
+    renderScreen('none');
+    window.MCLALauncherAPI.emitAction('runInstall', { source: activeConfig.main.install_source || window.__mclaInstallSource });
+  });
+  mkRow(S.cancel, '', S.back, '', () => {
+    window.MCLALauncherAPI.emitAction('cancelInstall', {});
+    showToast(S.cancel);
+  });
 }
 
 function renderScreen(animDir) {
@@ -1579,29 +3595,124 @@ function renderScreen(animDir) {
   const animClass = animDir === 'next' ? 'enter-next' : (animDir === 'prev' ? 'enter-prev' : '');
 
   if (tabObj.isHome) {
-    (tabObj.items || []).filter(i => i.visible !== false).forEach((item, idx) => {
-      const row = document.createElement('button');
-      row.className = 'menu-row' + (animClass ? ' ' + animClass : '');
-      row.style.setProperty('--row-idx', idx);
-      row.innerHTML = `
-        <div class="row-left">
-          <span class="row-arrow"></span>
-          <div class="row-label-block">
-            <span class="row-label">${item.label}</span>
-            ${item.sub ? `<span class="row-sub-label">${item.sub}</span>` : ''}
+    if (!window.__mclaInstallReady) {
+      renderSetupRows(screen, tabObj, animClass);
+    } else {
+      (tabObj.items || []).filter(i => i.visible !== false).forEach((item, idx) => {
+        const row = document.createElement('button');
+        row.className = 'menu-row' + (animClass ? ' ' + animClass : '');
+        row.style.setProperty('--row-idx', idx);
+        row.innerHTML = `
+          <div class="row-left">
+            <span class="row-arrow"></span>
+            <div class="row-label-block">
+              <span class="row-label">${item.label}</span>
+              ${item.sub ? `<span class="row-sub-label">${item.sub}</span>` : ''}
+            </div>
           </div>
-        </div>
-      `;
-      row.addEventListener('click', () => {
-        if (item.type === 'nav') switchTab(item.targetTab, 'next');
-        else {
-          window.MCLALauncherAPI.emitAction(item.action, activeConfig);
-          showToast(item.action === 'launchGame' ? 'LAUNCHING MCLA PC RECOMP...' : 'EXIT LAUNCHER');
-        }
+        `;
+        row.addEventListener('click', () => {
+          if (row.classList.contains('is-locked')) { mclaBadInput('locked-row'); return; }
+          if (item.type === 'nav') switchTab(item.targetTab, 'next');
+          else {
+            if (item.action === 'exitLauncher' && window.__mclaDirty && !window.__mclaExitArmed) {
+              window.__mclaExitArmed = true;
+              setTimeout(() => { window.__mclaExitArmed = false; }, 3000);
+              mclaBadInput('quit-dirty');
+              return;
+            }
+            window.MCLALauncherAPI.emitAction(item.action, activeConfig);
+            showToast(item.action === 'launchGame' ? 'LAUNCHING MCLA PC RECOMP...' : 'EXIT LAUNCHER');
+          }
+        });
+        attachRowEvents(row, idx);
+        screen.appendChild(row);
       });
-      attachRowEvents(row, idx);
-      screen.appendChild(row);
-    });
+    }
+  } else if (tabObj.isMods) {
+    const st = window.__mclaModsState || { modsDir: '', mods: [] };
+    const sub = document.createElement('div');
+    sub.className = 'sub-header-bar';
+    sub.innerHTML = `<span>${tabObj.subHeaderLeft || '&lt; MODS &gt;'}</span><span class="sub-header-dim">${st.mods.length} MOD(S)</span>`;
+    screen.appendChild(sub);
+
+    const saveMods = (msg) => {
+      if (window.chrome && window.chrome.webview && typeof window.chrome.webview.postMessage === 'function') {
+        window.chrome.webview.postMessage({ action: 'saveModlist', mods: st.mods });
+      }
+      if (msg) showToast(msg);
+    };
+
+    if (!st.mods.length) {
+      const hint = document.createElement('div');
+      hint.className = 'menu-row';
+      hint.innerHTML = `<div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">NO MODS FOUND</span><span class="row-sub-label">PLACE MOD FOLDERS IN ${st.modsDir || '&lt;GAME_DIR&gt;\\MODS\\'}</span></div></div><div class="row-right"><span class="cycle-val">EMPTY</span></div>`;
+      hint.addEventListener('click', () => {
+        window.MCLALauncherAPI.emitAction('openModsFolder', null);
+        showToast('OPENING MODS FOLDER');
+      });
+      attachRowEvents(hint, 0);
+      screen.appendChild(hint);
+
+      const ref = document.createElement('div');
+      ref.className = 'menu-row';
+      ref.innerHTML = `<div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">REFRESH MODS</span></div></div><div class="row-right"><span class="cycle-val">SCAN</span></div>`;
+      ref.addEventListener('click', () => {
+        window.MCLALauncherAPI.emitAction('listMods', null);
+        showToast('SCANNING MODS...');
+      });
+      attachRowEvents(ref, 1);
+      screen.appendChild(ref);
+    } else {
+      st.mods.forEach((m, idx) => {
+        const row = document.createElement('div');
+        row.className = 'menu-row' + (animClass ? ' ' + animClass : '');
+        row.style.setProperty('--row-idx', idx);
+        row.innerHTML = `
+          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${String(m.name || '').toUpperCase()}</span></div></div>
+          <div class="row-right" style="gap:6px;">
+            <button class="cycle-arrow mod-up" title="Move Up" style="font-size:12px;">▲</button>
+            <button class="cycle-arrow mod-dn" title="Move Down" style="font-size:12px;">▼</button>
+            <span class="cycle-val ${m.enabled ? 'is-on' : ''}">${m.enabled ? 'ON' : 'OFF'}</span>
+          </div>
+        `;
+        row.querySelector('.mod-up').addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (idx > 0) {
+            const tmp = st.mods[idx - 1]; st.mods[idx - 1] = st.mods[idx]; st.mods[idx] = tmp;
+            selectedRowIdx = idx - 1;
+            saveMods('MOD ORDER SAVED');
+            renderScreen('none');
+          }
+        });
+        row.querySelector('.mod-dn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (idx + 1 < st.mods.length) {
+            const tmp = st.mods[idx + 1]; st.mods[idx + 1] = st.mods[idx]; st.mods[idx] = tmp;
+            selectedRowIdx = idx + 1;
+            saveMods('MOD ORDER SAVED');
+            renderScreen('none');
+          }
+        });
+        row.addEventListener('click', () => {
+          m.enabled = !m.enabled;
+          saveMods(`${String(m.name).toUpperCase()}: ${m.enabled ? 'ON' : 'OFF'}`);
+          renderScreen('none');
+        });
+        attachRowEvents(row, idx);
+        screen.appendChild(row);
+      });
+      const refIdx = st.mods.length;
+      const ref = document.createElement('div');
+      ref.className = 'menu-row';
+      ref.innerHTML = `<div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">REFRESH MODS</span></div></div><div class="row-right"><span class="cycle-val">SCAN</span></div>`;
+      ref.addEventListener('click', () => {
+        window.MCLALauncherAPI.emitAction('listMods', null);
+        showToast('SCANNING MODS...');
+      });
+      attachRowEvents(ref, refIdx);
+      screen.appendChild(ref);
+    }
   } else {
     if (tabObj.subHeaderLeft) {
       const sub = document.createElement('div');
@@ -1609,7 +3720,18 @@ function renderScreen(animDir) {
       sub.innerHTML = `<span>${tabObj.subHeaderLeft}</span><span class="sub-header-dim">${tabObj.subHeaderRight || ''}</span>`;
       screen.appendChild(sub);
     }
+    let lastGroup = '';
     (tabObj.options || []).filter(o => o.visible !== false).forEach((opt, idx) => {
+      if (tabObj.id === 'advanced') {
+        const g = mclaCvarGroup(opt.key);
+        if (g !== lastGroup) {
+          lastGroup = g;
+          const gh = document.createElement('div');
+          gh.className = 'sub-header-bar';
+          gh.innerHTML = `<span>&lt; ${g} &gt;</span><span class="sub-header-dim">CVARS</span>`;
+          screen.appendChild(gh);
+        }
+      }
       const val = activeConfig[tabObj.id][opt.key];
       const row = document.createElement('div');
       row.className = 'menu-row' + (animClass ? ' ' + animClass : '');
@@ -1618,11 +3740,12 @@ function renderScreen(animDir) {
       if (opt.type === 'text') {
         row.innerHTML = `
           <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
-          <div class="row-right"><input class="text-value" type="text" maxlength="${opt.maxLength || 15}" value="${String(val ?? '').replace(/"/g, '&quot;')}" spellcheck="false" /></div>
+          <div class="row-right"><input class="text-value" type="text" maxlength="${opt.maxLength || 15}" value="${String(val ?? '').replace(/"/g, '&quot;')}" spellcheck="false" ${window.__mclaInstallReady ? '' : 'disabled'} /></div>
         `;
         const input = row.querySelector('.text-value');
         const sanitize = (value) => value.replace(/[^ -~]/g, '').replace(/=/g, '').slice(0, opt.maxLength || 15);
         const commit = () => {
+          if (row.classList.contains('is-locked')) { mclaBadInput('locked-row'); input.value = String(val ?? ''); return; }
           const clean = sanitize(input.value) || String(opt.default || 'SWA');
           input.value = clean;
           activeConfig[tabObj.id][opt.key] = clean;
@@ -1661,12 +3784,22 @@ function renderScreen(animDir) {
           });
         }
         const cycle = (dir) => {
+          if (row.classList.contains('is-locked')) { mclaBadInput('locked-row'); return; }
           const cur = opt.values.indexOf(activeConfig[tabObj.id][opt.key]);
           const nxt = (cur + dir + opt.values.length) % opt.values.length;
           const nv = opt.values[nxt];
           activeConfig[tabObj.id][opt.key] = nv;
           updateRowValueUI(row, opt, nv);
-          window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: nv });
+          if (opt.key === 'ui_language' || opt.key === 'install_lang') {
+            window.__mclaInstallLang = mclaLangCode(nv);
+            window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
+            document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+            window.__mclaInstallRefresh();
+            return;
+          }
+          if (opt.key === 'graphics_preset') window.MCLALauncherAPI.emitAction('applyGraphicsPreset', { preset: nv });
+          else if (opt.key === 'control_preset') window.MCLALauncherAPI.emitAction('applyControlPreset', { preset: nv });
+          else window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: nv });
         };
         row.querySelectorAll('.cycle-arrow').forEach(b => {
           b.addEventListener('click', (e) => { e.stopPropagation(); cycle(parseInt(b.dataset.dir, 10)); });
@@ -1678,7 +3811,7 @@ function renderScreen(animDir) {
         row.innerHTML = `
           <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
           <div class="row-right thin-slider-wrap">
-            <span class="thin-slider-pct">${val}%</span>
+            <span class="thin-slider-pct">${formatSliderVal(opt, val)}</span>
             <div class="thin-slider-track"><div class="thin-slider-rail"><div class="thin-slider-fill" style="width:${pct}%"></div></div></div>
           </div>
         `;
@@ -1689,7 +3822,7 @@ function renderScreen(animDir) {
           const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
           const step = opt.step || 5;
           const raw = opt.min + ratio * (opt.max - opt.min);
-          const nv = Math.round(raw / step) * step;
+          const nv = Math.round((Math.round(raw / step) * step) * 100) / 100;
           activeConfig[tabObj.id][opt.key] = nv;
           updateRowValueUI(row, opt, nv);
           window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: nv });
@@ -1700,6 +3833,13 @@ function renderScreen(animDir) {
           <div class="row-right"><span class="cycle-val" style="min-width:auto;text-align:right;">${val}</span></div>
         `;
         row.addEventListener('click', () => {
+          if ((opt.action === 'resetKeymap' || opt.action === 'restoreConfig') && !window.__mclaResetArmed) {
+            window.__mclaResetArmed = true;
+            setTimeout(() => { window.__mclaResetArmed = false; }, 3000);
+            showToast('PRESS AGAIN TO CONFIRM RESET');
+            return;
+          }
+          window.__mclaResetArmed = false;
           window.MCLALauncherAPI.emitAction(opt.action || 'rowAction', { tab: tabObj.id, key: opt.key, value: val });
           showToast(`${opt.label}: ${opt.action || 'TRIGGERED'}`);
         });
@@ -1721,6 +3861,7 @@ function renderScreen(animDir) {
   }
 
   renderFooterAndShoulders();
+  window.__mclaApplyLock();
 
   if (window.__mclaHighlightTimer) clearTimeout(window.__mclaHighlightTimer);
   if (animDir === 'next' || animDir === 'prev') {
@@ -1733,17 +3874,22 @@ function renderScreen(animDir) {
   }
 }
 
-document.getElementById('btnPrevTab').addEventListener('click', () => {
+function prevTab() {
   const vis = activeSchema.tabs.filter(t => t.visible !== false);
+  if (!vis.length) return;
   const i = vis.findIndex(t => t.id === currentTab);
   switchTab(vis[(i - 1 + vis.length) % vis.length].id, 'prev');
-});
+}
 
-document.getElementById('btnNextTab').addEventListener('click', () => {
+function nextTab() {
   const vis = activeSchema.tabs.filter(t => t.visible !== false);
+  if (!vis.length) return;
   const i = vis.findIndex(t => t.id === currentTab);
   switchTab(vis[(i + 1) % vis.length].id, 'next');
-});
+}
+
+document.getElementById('btnPrevTab').addEventListener('click', prevTab);
+document.getElementById('btnNextTab').addEventListener('click', nextTab);
 
 function keyNameFromEvent(e) {
   const named = {
@@ -1770,6 +3916,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (window.__mclaListeningRow) {
     e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') { cancelKeyListening(); showToast('KEYBIND CANCELLED'); return; }
     const key = keyNameFromEvent(e);
     if (!key) { showToast('UNSUPPORTED KEY'); return; }
     const row = window.__mclaListeningRow;
@@ -1785,20 +3932,25 @@ document.addEventListener('keydown', (e) => {
     renderFooterAndShoulders();
   }
   const k = e.key;
-  const handled = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape','Tab',' ','q','Q','e','E','w','W','s','S'];
-  if (handled.includes(k)) { e.preventDefault(); e.stopPropagation(); }
+  const code = e.code || '';
+  const isQ = code === 'KeyQ' || k === 'q' || k === 'Q';
+  const isE = code === 'KeyE' || k === 'e' || k === 'E';
+  const isW = code === 'KeyW' || k === 'w' || k === 'W';
+  const isS = code === 'KeyS' || k === 's' || k === 'S';
+  const handled = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape','Backspace','Tab',' '];
+  if (handled.includes(k) || isQ || isE || isW || isS) { e.preventDefault(); e.stopPropagation(); }
   if (k === 'Tab') { moveSelection(e.shiftKey ? -1 : 1); return; }
-  if ((k === 'q' || k === 'Q') && !e.repeat) document.getElementById('btnPrevTab').click();
-  if ((k === 'e' || k === 'E') && !e.repeat) document.getElementById('btnNextTab').click();
-  if (k === 'ArrowUp' || k === 'w' || k === 'W') moveSelection(-1);
-  if (k === 'ArrowDown' || k === 's' || k === 'S') moveSelection(1);
+  if (isQ && !e.repeat) prevTab();
+  if (isE && !e.repeat) nextTab();
+  if (k === 'ArrowUp' || isW) moveSelection(-1);
+  if (k === 'ArrowDown' || isS) moveSelection(1);
   if (k === 'ArrowLeft' || k === 'ArrowRight') {
     const tabObj = activeSchema.tabs.find(t => t.id === currentTab) || activeSchema.tabs[0];
-    if (tabObj.isHome) document.getElementById(k === 'ArrowLeft' ? 'btnPrevTab' : 'btnNextTab').click();
+    if (tabObj.isHome) (k === 'ArrowLeft' ? prevTab() : nextTab());
     else adjustSelected(k === 'ArrowLeft' ? -1 : 1);
   }
   if ((k === 'Enter' || k === ' ') && !e.repeat) activateSelectedRow();
-  if (k === 'Escape' && currentTab !== 'main' && !e.repeat) switchTab('main', 'prev');
+  if ((k === 'Escape' || k === 'Backspace') && currentTab !== 'main' && !e.repeat) switchTab('main', 'prev');
 });
 
 document.getElementById('btnWinMin').addEventListener('click', () => {
@@ -1826,27 +3978,7 @@ function emitReadyOnce() {
   window.MCLALauncherAPI.emitAction('ready', { version: '1.0' });
 }
 
-if (window.location.protocol !== 'file:') {
-  fetch('./launcher.schema.json')
-    .then((r) => (r.ok ? r.json() : null))
-    .then((ext) => {
-      if (ext && Array.isArray(ext.tabs)) {
-        window.MCLALauncherAPI.loadSchema(ext);
-        try {
-          const saved = localStorage.getItem(ext.storageKey || activeSchema.storageKey);
-          if (saved) window.MCLALauncherAPI.loadConfig(JSON.parse(saved));
-        } catch (e) {}
-        try {
-          const wantTab = new URLSearchParams(window.location.search).get('tab');
-          if (wantTab && activeSchema.tabs.some(t => t.id === wantTab)) switchTab(wantTab, 'next');
-        } catch (e) {}
-      }
-    })
-    .catch(() => {})
-    .finally(emitReadyOnce);
-} else {
-  emitReadyOnce();
-}
+emitReadyOnce();
 </script>
 </body>
 </html>

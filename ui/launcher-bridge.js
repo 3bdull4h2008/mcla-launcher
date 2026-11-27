@@ -14,6 +14,9 @@
  *   - openLogs        (open run.log)
  *   - minimizeWindow  (minimize host window)
  *   - exitLauncher    (close host window)
+  *   - getInstallStatus / chooseInstallSource / runInstall / setInstallLanguage
+  *     (first-run installer; host answers with loadInstallStatus / setInstallSource /
+  *      installFinished / setInstallProgress)
  */
 (function (global) {
   'use strict';
