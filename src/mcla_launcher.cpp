@@ -26,9 +26,11 @@
 #include <set>
 #include "wv2/WebView2.h"
 #include "generated_settings_contract.h"
+#include "iso_manifest.h"
 
 using Microsoft::WRL::ComPtr;
 using Microsoft::WRL::Callback;
+typedef HRESULT (WINAPI* CreateWebView2EnvironmentFn)(REFIID, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
 
 static const int WIN_W = 650, WIN_H = 446;
 static int    g_w = WIN_W, g_h = WIN_H;
@@ -59,6 +61,44 @@ static std::wstring dirOf(const std::wstring& p) {
     return i == std::wstring::npos ? L"" : p.substr(0, i);
 }
 static bool exists(const std::wstring& p) { return GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES; }
+static bool writeResource(HMODULE mod, int id, const std::wstring& path) {
+    HRSRC r = FindResourceW(mod, MAKEINTRESOURCE(id), RT_RCDATA);
+    if (!r) return false;
+    HGLOBAL g = LoadResource(mod, r);
+    if (!g) return false;
+    DWORD size = SizeofResource(mod, r);
+    void* data = LockResource(g);
+    if (!data || !size) return false;
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD written = 0;
+    BOOL ok = WriteFile(h, data, size, &written, nullptr) && written == size;
+    CloseHandle(h);
+    return ok != FALSE;
+}
+
+static std::wstring ensureBundledResources(HMODULE mod) {
+    wchar_t la[MAX_PATH];
+    std::wstring base;
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", la, MAX_PATH))
+        base = std::wstring(la) + L"\\MCLA_Launcher";
+    else
+        base = L"C:\\MCLA_Launcher";
+    const std::wstring webview = base + L"\\WebView2";
+    const std::wstring ui = webview + L"\\ui";
+    SHCreateDirectoryExW(nullptr, (ui + L"\\fonts").c_str(), nullptr);
+    writeResource(mod, 1, ui + L"\\index.html");
+    writeResource(mod, 2, ui + L"\\launcher-bridge.js");
+    writeResource(mod, 3, ui + L"\\launcher.schema.json");
+    writeResource(mod, 4, ui + L"\\logo.png");
+    writeResource(mod, 5, ui + L"\\fonts\\rajdhani-600.woff2");
+    writeResource(mod, 6, ui + L"\\fonts\\rajdhani-700.woff2");
+    writeResource(mod, 7, ui + L"\\fonts\\saira-600.woff2");
+    writeResource(mod, 8, ui + L"\\fonts\\saira-700.woff2");
+    writeResource(mod, 9, webview + L"\\WebView2Loader.dll");
+    return webview;
+}
+
 static std::string narrow(const std::wstring& w) {
     int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), nullptr, 0, nullptr, nullptr);
     std::string s(n, '\0'); WideCharToMultiByte(CP_UTF8, 0, w.c_str(), (int)w.size(), &s[0], n, nullptr, nullptr); return s;
@@ -342,9 +382,9 @@ static InstallCheck checkInstall(const std::wstring& gameDir, const std::wstring
         if (hashCount++) hashes += ",";
         hashes += "\"" + std::string(keyNames[i]) + "\":\"" + hx + "\"";
     }
-    const std::wstring dirs[] = { gameDir + L"\\content", gameDir + L"\\game_data" };
-    const char* dirNames[] = { "content", "game_data" };
-    for (size_t i = 0; i < 2; ++i) {
+    const std::wstring dirs[] = { gameDir + L"\\game_data" };
+    const char* dirNames[] = { "game_data" };
+    for (size_t i = 0; i < 1; ++i) {
         unsigned long long n = 0, b = 0;
         dirFingerprint(dirs[i], n, b);
         if (!n) { r.missing.push_back(dirNames[i]); allFiles = false; }
@@ -410,7 +450,53 @@ static bool copyTree(const std::wstring& from, const std::wstring& to, std::stri
     return ok;
 }
 
+static bool extractIso(const std::wstring& iso, const std::wstring& gameDir, std::string& error) {
+    HANDLE h = CreateFileW(iso.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) { error = "cannot open ISO"; return false; }
+    LARGE_INTEGER magicPos{}; magicPos.QuadPart = 0x8001;
+    char magic[8] = {}; DWORD got = 0;
+    if (!SetFilePointerEx(h, magicPos, nullptr, FILE_BEGIN) || !ReadFile(h, magic, 5, &got, nullptr) || got != 5 || memcmp(magic, "CD001", 5) != 0) {
+        CloseHandle(h); error = "not an ISO9660 image"; return false;
+    }
+    LARGE_INTEGER end{}; GetFileSizeEx(h, &end);
+    const std::wstring dataDir = gameDir + L"\\game_data";
+    SHCreateDirectoryExW(nullptr, dataDir.c_str(), nullptr);
+    bool ok = true;
+    for (int i = 0; i < kMclaIsoManifestCount && ok; ++i) {
+        const MclaIsoEntry& e = kMclaIsoManifest[i];
+        if (e.offset < 0 || e.offset + e.size > end.QuadPart) { error = std::string("ISO entry out of range: ") + e.name; ok = false; break; }
+        LARGE_INTEGER pos{}; pos.QuadPart = e.offset;
+        if (!SetFilePointerEx(h, pos, nullptr, FILE_BEGIN)) { error = std::string("seek failed: ") + e.name; ok = false; break; }
+        std::wstring out = dataDir + L"\\" + widen(e.name);
+        HANDLE o = CreateFileW(out.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (o == INVALID_HANDLE_VALUE) { error = std::string("cannot create: ") + e.name; ok = false; break; }
+        char buf[64 * 1024];
+        long long left = e.size;
+        while (left > 0) {
+            DWORD want = (DWORD)std::min<long long>(left, sizeof buf);
+            DWORD r = 0, w = 0;
+            if (!ReadFile(h, buf, want, &r, nullptr) || r == 0 || !WriteFile(o, buf, r, &w, nullptr) || w != r) { ok = false; break; }
+            left -= r;
+        }
+        CloseHandle(o);
+        if (!ok) { error = std::string("extract failed: ") + e.name; break; }
+    }
+    CloseHandle(h);
+    if (!ok) return false;
+    SHCreateDirectoryExW(nullptr, (gameDir + L"\\cache").c_str(), nullptr);
+    writeFileAtomic(gameDir + L"\\cache\\mcla.toml", "mcla_fps = 60\r\nresolution_scale = 1\r\nvsync = true\r\n");
+    SHCreateDirectoryExW(nullptr, (gameDir + L"\\dxil_cache").c_str(), nullptr);
+    SHCreateDirectoryExW(nullptr, (gameDir + L"\\mods").c_str(), nullptr);
+    return true;
+}
+
 static bool runInstall(const std::wstring& src, const std::wstring& gameDir, const std::wstring& uiDir, std::string& error) {
+    if (!g_isoPath.empty()) {
+        if (!extractIso(g_isoPath, gameDir, error)) return false;
+        if (!writeReadyMarker(gameDir, uiDir)) { error = "verification failed; ready marker was not created"; return false; }
+        cleanupDevFiles(gameDir);
+        return true;
+    }
     if (src.empty()) {
         if (!writeReadyMarker(gameDir, uiDir)) { error = "game files are incomplete"; return false; }
         return true;
@@ -849,6 +935,22 @@ static bool gameRunning() {
         if (_wcsicmp(pe.szExeFile, L"mcla.exe") == 0) { r = true; break; }
     CloseHandle(s); return r;
 }
+static void warmCaches(const std::wstring& gameDir) {
+    const std::wstring exe = gameDir + L"\\mcla.exe";
+    if (!exists(exe) || gameRunning()) return;
+    SetEnvironmentVariableW(L"MCLA_PSO_PREWARM", L"1");
+    STARTUPINFOW si = { sizeof(si) }; PROCESS_INFORMATION pi = {};
+    std::wstring cmd = L"\"" + exe + L"\"";
+    bool started = CreateProcessW(exe.c_str(), &cmd[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, gameDir.c_str(), &si, &pi) != FALSE;
+    SetEnvironmentVariableW(L"MCLA_PSO_PREWARM", nullptr);
+    if (started) {
+        if (WaitForSingleObject(pi.hProcess, 20000) == WAIT_TIMEOUT) TerminateProcess(pi.hProcess, 1);
+        DWORD code = 0; GetExitCodeProcess(pi.hProcess, &code);
+        CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+    }
+    cleanupDevFiles(gameDir);
+}
+
 static void launchGame() {
     InstallCheck c = checkInstall(g_gameDir, g_uiDir);
     if (!c.markerValid) {
@@ -1295,25 +1397,52 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
 
     if (wcsstr(GetCommandLineW(), L"--selftest")) return selfTest();
+    if (wcsstr(GetCommandLineW(), L"--extract-test")) {
+        const wchar_t* iso = _wgetenv(L"MCLA_TEST_ISO");
+        const wchar_t* dst = _wgetenv(L"MCLA_TEST_DEST");
+        if (!iso || !dst) return 2;
+        std::string err;
+        bool ok = extractIso(iso, dst, err);
+        if (!ok) {
+            wchar_t tmp[MAX_PATH]; GetTempPathW(MAX_PATH, tmp);
+            std::ofstream o(std::wstring(tmp) + L"mcla_extract_err.txt", std::ios::binary);
+            o << err;
+            fprintf(stderr, "EXTRACT_ERROR: %s\n", err.c_str());
+            return 3;
+        }
+        return 0;
+    }
+    if (wcsstr(GetCommandLineW(), L"--install-cli")) {
+        const wchar_t* iso = _wgetenv(L"MCLA_ISO");
+        const wchar_t* dst = _wgetenv(L"MCLA_GAME_DIR");
+        if (!iso || !dst) return 2;
+        g_gameDir = dst;
+        g_ini = g_gameDir + L"\\mcla_launcher.ini";
+        g_cacheDir = g_gameDir + L"\\cache";
+        g_isoPath = iso;
+        std::string err;
+        if (!extractIso(iso, g_gameDir, err)) { fprintf(stderr, "ISO: %s\n", err.c_str()); return 3; }
+        if (!writeReadyMarker(g_gameDir, L"")) { fprintf(stderr, "MARKER failed\n"); return 4; }
+        cleanupDevFiles(g_gameDir);
+        warmCaches(g_gameDir);
+        return 0;
+    }
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     wchar_t p[MAX_PATH]; GetModuleFileNameW(nullptr, p, MAX_PATH);
     g_dir = dirOf(p);
-    std::wstring repo = dirOf(g_dir);
     g_ini = g_dir + L"\\mcla_launcher.ini";
     if (!resolveGameDir()) return 0;
     if (g_installMode) SetEnvironmentVariableW(L"MCLA_INSTALL_MODE", L"1");
     if (!exists(g_ini) && exists(g_gameDir + L"\\mcla_launcher.ini")) g_ini = g_gameDir + L"\\mcla_launcher.ini";
     g_mclaExe = g_gameDir + L"\\mcla.exe";
     dumpCVars();
-    g_uiDir = g_dir + L"\\launcher\\ui";
-    if (!exists(g_uiDir + L"\\index.html")) g_uiDir = repo + L"\\tools\\launcher\\ui";
-    if (!exists(g_uiDir + L"\\index.html")) g_uiDir = g_gameDir + L"\\launcher\\ui";
-    if (!exists(g_uiDir + L"\\index.html")) { MessageBoxW(nullptr, L"launcher\\ui\\index.html not found.", L"MCLA Launcher", MB_ICONERROR); return 1; }
+    const std::wstring ud = ensureBundledResources(hi);
+    g_uiDir = ud + L"\\ui";
     g_cacheDir = g_gameDir + L"\\cache"; CreateDirectoryW(g_cacheDir.c_str(), nullptr);
 
     WNDCLASSW wc = {}; wc.lpfnWndProc = WndProc; wc.hInstance = hi; wc.lpszClassName = L"MclaLauncherWv2";
-    wc.hIcon = (HICON)LoadImageW(hi, L"launcher.ico", IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
+    wc.hIcon = LoadIconW(hi, MAKEINTRESOURCE(101));
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     RegisterClassW(&wc);
 
@@ -1332,17 +1461,12 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
     LayoutLauncher(g_hwnd, GetDpiForWindow(g_hwnd), monitor);
     ShowWindow(g_hwnd, SW_SHOW); UpdateWindow(g_hwnd);
 
-    std::wstring ud;
-    wchar_t la[MAX_PATH];
-    if (GetEnvironmentVariableW(L"LOCALAPPDATA", la, MAX_PATH)) {
-        ud = std::wstring(la) + L"\\MCLA_Launcher\\WebView2";
-        SHCreateDirectoryExW(nullptr, ud.c_str(), nullptr);
-    } else {
-        ud = g_dir + L"\\WebView2UserData";
-        CreateDirectoryW(ud.c_str(), nullptr);
-    }
+    HMODULE loader = LoadLibraryW((ud + L"\\WebView2Loader.dll").c_str());
+    if (!loader) { MessageBoxW(nullptr, L"Cannot load bundled WebView2Loader.dll", L"MCLA Launcher", MB_ICONERROR); return 1; }
+    auto createEnv = (CreateWebView2EnvironmentFn)GetProcAddress(loader, "CreateCoreWebView2EnvironmentWithOptions");
+    if (!createEnv) { MessageBoxW(nullptr, L"WebView2 loader entry point missing", L"MCLA Launcher", MB_ICONERROR); return 1; }
     EnvHandler* eh = new EnvHandler();
-    HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(nullptr, ud.c_str(), nullptr, eh);
+    HRESULT hr = createEnv(GUID_NULL, ud.c_str(), nullptr, eh);
     eh->Release();
     if (FAILED(hr)) wv2Fail(hr);
 

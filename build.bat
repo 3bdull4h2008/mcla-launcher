@@ -15,18 +15,20 @@ if not exist out mkdir out
 set "INC=-I sdk -I sdk\wv2"
 set "LIBS=user32.lib gdi32.lib ole32.lib dcomp.lib dwmapi.lib shlwapi.lib shell32.lib advapi32.lib comdlg32.lib"
 
+rc /nologo /fo out\mcla_launcher.res src\mcla_launcher.rc
+if errorlevel 1 (
+  echo RESOURCE FAILED
+  exit /b 3
+)
+
 clang-cl /nologo /std:c++17 /EHsc /W3 /DUNICODE /D_UNICODE /DNOMINMAX ^
   %INC% /Fo"out\\" /Fd"out\\" ^
-  src\mcla_launcher.cpp ^
-  deps\WebView2Loader.dll.lib /link /OUT:out\mcla_launcher.exe /MANIFEST:EMBED /MANIFESTINPUT:src\mcla_launcher.manifest %LIBS%
+  src\mcla_launcher.cpp out\mcla_launcher.res ^
+  /link /OUT:out\mcla_launcher.exe /MANIFEST:EMBED /MANIFESTINPUT:src\mcla_launcher.manifest %LIBS%
 if errorlevel 1 (
   echo BUILD FAILED
   exit /b 3
 )
 
-rem Stage runtime next to the exe
-copy /Y deps\WebView2Loader.dll out\ >nul
-copy /Y launcher.ico out\ >nul
-xcopy /E /I /Y ui out\launcher\ui\ >nul
-echo Built: %~dp0out\mcla_launcher.exe
+echo Built single-file: %~dp0out\mcla_launcher.exe
 endlocal

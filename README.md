@@ -34,8 +34,15 @@ Requirements: VS BuildTools (vcvars64), LLVM `clang-cl`, WebView2 Runtime instal
 build.bat
 ```
 
-Output: `out\mcla_launcher.exe`. Then copy `out\mcla_launcher.exe`, `out\WebView2Loader.dll`,
-`out\launcher.ico` and the `out\launcher\ui\` folder into the game's `build\` directory.
+Output: `out\mcla_launcher.exe` — a **single executable**. The WebView2 loader, the UI, its fonts and
+the icon are embedded as resources and extracted to `%LOCALAPPDATA%\MCLA_Launcher\WebView2\` on
+first run. There is no `launcher\` folder next to the game.
+
+The installer accepts a single `.iso` file (CHOOSE ISO). It validates the ISO9660 header, extracts
+the measured game-file map from `src/iso_manifest.h`, writes a clean `cache/mcla.toml`, removes
+development leftovers (`*.log`, `*.pdb`, `*.dmp`), and warms the PSO/shader caches by running
+`mcla.exe` once with `MCLA_PSO_PREWARM=1`. The game directory ends up with only the launcher,
+`mcla.exe`, `game_data\`, `cache\`, `dxil_cache\` and `mods\`.
 
 The host auto-detects paths:
 - `mcla.exe` — next to the exe, or `..\build\mcla.exe`
@@ -53,7 +60,7 @@ Required items:
 - `mcla.exe` (SHA-256 recorded in the marker)
 - `cache/mcla.toml` (SHA-256 recorded in the marker)
 - `launcher\ui\index.html` (SHA-256 recorded in the marker)
-- `content\` and `game_data\` (file count + total bytes recorded in the marker)
+- `game_data\` (file count + total bytes recorded in the marker)
 
 If the marker is missing or invalid, the **PLAY** tab itself shows the setup rows — welcome,
 language, source folder, CHOOSE FOLDER, CHOOSE ISO, INSTALL and CANCEL — using the same rows,

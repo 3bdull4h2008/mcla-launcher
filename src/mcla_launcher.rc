@@ -1,0 +1,14 @@
+#include <windows.h>
+#define IDI_APP 101
+
+IDI_APP ICON "../launcher.ico"
+
+1 RCDATA "../ui/index.html"
+2 RCDATA "../ui/launcher-bridge.js"
+3 RCDATA "../ui/launcher.schema.json"
+4 RCDATA "../ui/logo.png"
+5 RCDATA "../ui/fonts/rajdhani-600.woff2"
+6 RCDATA "../ui/fonts/rajdhani-700.woff2"
+7 RCDATA "../ui/fonts/saira-600.woff2"
+8 RCDATA "../ui/fonts/saira-700.woff2"
+9 RCDATA "../deps/WebView2Loader.dll"
