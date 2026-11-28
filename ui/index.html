@@ -3509,7 +3509,7 @@ function updateRowValueUI(row, opt, newVal) {
     if (keyBind) { keyBind.textContent = newVal; }
     const valSpan = row.querySelector('.cycle-val');
     if (valSpan) {
-      valSpan.textContent = newVal;
+      valSpan.textContent = mclaOptionValue(newVal);
       valSpan.classList.toggle('is-on', newVal === 'ON' || newVal === 'ENABLED');
     }
   } else if (opt.type === 'slider') {
@@ -3542,6 +3542,34 @@ const MCLA_FOOTER_TEXT = {
 function mclaText(key) {
   const lang = window.__mclaInstallLang || 'en';
   return (MCLA_FOOTER_TEXT[lang] || MCLA_FOOTER_TEXT.en)[key] || key;
+}
+const MCLA_OPTION_AR = {
+  'LANGUAGE':'اللغة','TEXT SIZE':'حجم النص','PANEL BLUR':'ضبابية اللوحة','ANIMATIONS':'الأنيميشن','GLOW SPEED':'سرعة الإضاءة','WINDOW DRAG':'تحريك النافذة',
+  'DISPLAY MODE':'نمط العرض','WINDOW RESOLUTION':'دقة النافذة','RENDER SCALE':'مقياس الرسم','FPS LIMIT':'حد الإطارات','V-SYNC':'المزامنة','ASPECT RATIO':'نسبة الأبعاد','HUD SCALE':'حجم الواجهة','HDR10':'HDR10','DISPLAY GAMMA':'غاما العرض','MOTION BLUR':'طمس الحركة','DEPTH OF FIELD':'عمق المجال','HIDE CURSOR':'إخفاء المؤشر','AUDIO GAIN':'مستوى الصوت','BRIGHTNESS':'السطوع','720P BACKBUFFER':'المخزن 720P','CUSTOM WIDTH × HEIGHT':'عرض × ارتفاع مخصص',
+  'GRAPHICS PRESET':'إعداد الرسوميات','CONTROL PRESET':'إعداد التحكم','RESET KEYMAP':'إعادة تعيين المفاتيح','BUTTON PROMPTS':'رموز الأزرار','VIBRATION':'الاهتزاز','LEFT DEADZONE':'المنطقة الميتة اليسرى','RIGHT DEADZONE':'المنطقة الميتة اليمنى',
+  'A - SOUTH BUTTON':'A - الزر الجنوبي','B - EAST BUTTON':'B - الزر الشرقي','X - WEST BUTTON':'X - الزر الغربي','Y - NORTH BUTTON':'Y - الزر الشمالي','LB - LEFT SHOULDER':'LB - الكتف الأيسر','RB - RIGHT SHOULDER':'RB - الكتف الأيمن','LT - LEFT TRIGGER':'LT - الزناد الأيسر','RT - RIGHT TRIGGER':'RT - الزناد الأيمن','LT - LEFT TRIGGER (AXIS)':'LT - محور الزناد الأيسر','RT - RIGHT TRIGGER (AXIS)':'RT - محور الزناد الأيمن','LS - LEFT STICK CLICK':'LS - ضغط العصا اليسرى','RS - RIGHT STICK CLICK':'RS - ضغط العصا اليمنى','D-PAD UP':'الوسادة - أعلى','D-PAD DOWN':'الوسادة - أسفل','D-PAD LEFT':'الوسادة - يسار','D-PAD RIGHT':'الوسادة - يمين','LEFT STICK LEFT':'العصا اليسرى - يسار','LEFT STICK RIGHT':'العصا اليسرى - يمين','RIGHT STICK UP':'العصا اليمنى - أعلى','RIGHT STICK DOWN':'العصا اليمنى - أسفل','RIGHT STICK LEFT':'العصا اليمنى - يسار','RIGHT STICK RIGHT':'العصا اليمنى - يمين','START BUTTON':'زر البدء','BACK BUTTON':'زر الرجوع','LOG KEYMAP':'سجل المفاتيح',
+  'PROFILE NAME':'اسم الملف','LOCAL SIGN-IN SLOTS':'مساحات الدخول المحلية','OPEN GAME FOLDER':'فتح مجلد اللعبة','CHANGE GAME FOLDER':'تغيير مجلد اللعبة','BUILD LOGS':'سجلات البناء','BACKUP SETTINGS':'نسخ الإعدادات','RESTORE SETTINGS':'استعادة الإعدادات','CHECK UPDATE':'فحص التحديث','MORE MCLA.EXE OPTS':'خيارات إضافية','PREPARE SHADERS':'تجهيز الشيدرات','REBUILD FROM ISO':'إعادة البناء من ISO',
+  'SOURCE FOLDER':'مجلد المصدر','PLAY':'تشغيل','QUIT':'إغلاق',
+  'RENDERER':'المصيب','FULLSCREEN BLUR':'طمس ملء الشاشة','RACE SHADOWS (cvar)':'ظلال السباق','FAST CAR SHADOWS (cvar)':'ظلال السيارات السريعة','HARDWARE OCCLUSION CULLING':'إخفاء بالإغلاق العتادي','TWO-STAGE RENDERING':'رسم على مرحلتين','MULTI-THREADED DRAW PREP':'تحضير الرسم متعدد الخيوط','PARALLEL DRAW RECORDING':'تسجيل الرسم المتوازي','CPU TEXTURE MIPS':'مستويات نسيج المعالج','RESOLVED TEXTURE MIPS':'مستويات النسيج المحلولة','MSAA LINE GUARD':'حماية خطوط MSAA','PATCH GROUPS':'مجموعات التصحيح','HDR10 OUTPUT':'إخراج HDR10','DISPLAY GAMMA LUT':'جدول غاما العرض','IN-GAME SETTINGS MENU':'قائمة الإعدادات داخل اللعبة','INTRO VIDEOS':'فيديوهات البداية','CHECKPOINT SWEEP':'مسح نقاط الفحص','CONTINUOUS PHYSICS':'فيزياء مستمرة','FLOAT CLOCK':'ساعة عائمة','PACE AT SWAP':'إيقاع عند التبديل','SWAP UNLOCK':'فتح التبديل','DT MAX':'أقصى زمن إطار','POLL SPIN (us)':'دوران الاستطلاع','POLL TAIL (us)':'ذيل الاستطلاع','POLL WAIT':'انتظار الاستطلاع','PUMP WAKE ON DEMAND':'إيقاظ عند الطلب','PUMP WAKE PAUSE (s)':'توقف إيقاظ المضخة','PUMP SLEEP MAX (ms)':'أقصى نوم للمضخة','PAD LATCH (ms)':'تثبيت الوسادة','ADAPTIVE AUDIO BUFFER':'مخزن صوت تكيفي'
+};
+function mclaOptionLabel(label) {
+  const lang = window.__mclaInstallLang || 'en';
+  if (lang === 'ar') return MCLA_OPTION_AR[label] || label;
+  return label;
+}
+const MCLA_VALUE_AR = { ON:'تشغيل', OFF:'إيقاف', AUTO:'تلقائي', auto:'تلقائي', LOW:'منخفض', MEDIUM:'متوسط', HIGH:'عالي', ENGLISH:'الإنجليزية', 'العربية':'العربية', FRANÇAIS:'الفرنسية', ESPAÑOL:'الإسبانية', DEUTSCH:'الألمانية', ITALIANO:'الإيطالية', TV:'تلفاز', PC:'كمبيوتر', 'WASD':'WASD', 'XBOX':'XBOX', CUSTOM:'مخصص', 'BORDERLESS FULLSCREEN':'ملء الشاشة بحدود', 'EXCLUSIVE FULLSCREEN':'ملء الشاشة حصري', WINDOWED:'نافذة', 'ALL FOUR':'الأربعة', 'SLOT 0 ONLY':'المنفذ 0 فقط', 'PC KEYBOARD':'كيبورد', 'XBOX 360':'إكس بوكس 360', PLAYSTATION:'بلايستيشن' };
+function mclaOptionValue(v) {
+  if ((window.__mclaInstallLang || 'en') === 'ar') return MCLA_VALUE_AR[v] || v;
+  return v;
+}
+const MCLA_SUB_AR = {
+  'DISPLAY & VIDEO':'العرض والفيديو','GRAPHICS':'الرسوميات','KEYMAP':'تعيين المفاتيح','ADVANCED':'متقدم','LAUNCHER':'اللانشر','MODS':'المودات','MCLA-RECOMP':'MCLA-RECOMP','CVARS':'متغيرات','SETTINGS':'الإعدادات','PROFILE / TOOLS':'الملف / الأدوات','GAME CVARS':'متغيرات اللعبة','EACH KEY = ONE GAMEPAD BUTTON':'كل مفتاح = زر يد تحكم','GUEST DECIDES BY SCREEN':'اللعبة تقرر حسب الشاشة','FROM MCLA.EXE':'من MCLA.EXE','FIRST TIME':'أول مرة','MCLA SETUP':'إعداد MCLA','LABEL':'اللغة'
+};
+function mclaSubHeader(text) {
+  if ((window.__mclaInstallLang || 'en') !== 'ar' || !text) return text;
+  let out = text;
+  for (const k of Object.keys(MCLA_SUB_AR)) out = out.split(k).join(MCLA_SUB_AR[k]);
+  return out;
 }
 function mclaTabTitle(id) {
   const lang = window.__mclaInstallLang || 'en';
@@ -3812,7 +3840,7 @@ function renderScreen(animDir) {
     const st = window.__mclaModsState || { modsDir: '', mods: [] };
     const sub = document.createElement('div');
     sub.className = 'sub-header-bar';
-    sub.innerHTML = `<span>${tabObj.subHeaderLeft || '&lt; MODS &gt;'}</span><span class="sub-header-dim">${st.mods.length} MOD(S)</span>`;
+    sub.innerHTML = `<span>${mclaSubHeader(tabObj.subHeaderLeft || '&lt; MODS &gt;')}</span><span class="sub-header-dim">${st.mods.length} MOD(S)</span>`;
     screen.appendChild(sub);
 
     const saveMods = (msg) => {
@@ -3896,7 +3924,7 @@ function renderScreen(animDir) {
     if (tabObj.subHeaderLeft) {
       const sub = document.createElement('div');
       sub.className = 'sub-header-bar';
-      sub.innerHTML = `<span>${tabObj.subHeaderLeft}</span><span class="sub-header-dim">${tabObj.subHeaderRight || ''}</span>`;
+      sub.innerHTML = `<span>${mclaSubHeader(tabObj.subHeaderLeft)}</span><span class="sub-header-dim">${mclaSubHeader(tabObj.subHeaderRight || '')}</span>`;
       screen.appendChild(sub);
     }
     let lastGroup = '';
@@ -3918,7 +3946,7 @@ function renderScreen(animDir) {
 
       if (opt.type === 'text') {
         row.innerHTML = `
-          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
+          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${mclaOptionLabel(opt.label)}</span></div></div>
           <div class="row-right"><input class="text-value" type="text" maxlength="${opt.maxLength || 15}" value="${String(val ?? '').replace(/"/g, '&quot;')}" spellcheck="false" ${window.__mclaInstallReady ? '' : 'disabled'} /></div>
         `;
         const input = row.querySelector('.text-value');
@@ -3951,11 +3979,11 @@ function renderScreen(animDir) {
         const arrowL = rtlUI ? '&gt;' : '&lt;';
         const arrowR = rtlUI ? '&lt;' : '&gt;';
         row.innerHTML = `
-          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
+          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${mclaOptionLabel(opt.label)}</span></div></div>
           <div class="row-right">
             ${isKey ? `<button class="key-bind" title="Click then press any supported key; click again to cancel">${val}</button>` : `
             <button class="cycle-arrow" data-dir="-1">${arrowL}</button>
-            <span class="cycle-val ${val === 'ON' || val === 'ENABLED' ? 'is-on' : ''}">${val}</span>
+            <span class="cycle-val ${val === 'ON' || val === 'ENABLED' ? 'is-on' : ''}">${mclaOptionValue(val)}</span>
             <button class="cycle-arrow" data-dir="1">${arrowR}</button>`}
           </div>
         `;
@@ -4000,7 +4028,7 @@ function renderScreen(animDir) {
       } else if (opt.type === 'slider') {
         const pct = Math.round(((val - opt.min) / (opt.max - opt.min)) * 100);
         row.innerHTML = `
-          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
+          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${mclaOptionLabel(opt.label)}</span></div></div>
           <div class="row-right thin-slider-wrap">
             <span class="thin-slider-pct">${formatSliderVal(opt, val)}</span>
             <div class="thin-slider-track"><div class="thin-slider-rail"><div class="thin-slider-fill" style="width:${pct}%"></div></div></div>
@@ -4020,8 +4048,8 @@ function renderScreen(animDir) {
         });
       } else {
         row.innerHTML = `
-          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
-          <div class="row-right"><span class="cycle-val" style="min-width:auto;text-align:right;">${val}</span></div>
+          <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${mclaOptionLabel(opt.label)}</span></div></div>
+          <div class="row-right"><span class="cycle-val" style="min-width:auto;text-align:right;">${mclaOptionValue(val)}</span></div>
         `;
         row.addEventListener('click', () => {
           if ((opt.action === 'resetKeymap' || opt.action === 'restoreConfig') && !window.__mclaResetArmed) {
@@ -4032,7 +4060,7 @@ function renderScreen(animDir) {
           }
           window.__mclaResetArmed = false;
           window.MCLALauncherAPI.emitAction(opt.action || 'rowAction', { tab: tabObj.id, key: opt.key, value: val });
-          showToast(`${opt.label}: ${opt.action || 'TRIGGERED'}`);
+          showToast(`${mclaOptionLabel(opt.label)}: ${opt.action || 'TRIGGERED'}`);
         });
       }
       attachRowEvents(row, idx);
