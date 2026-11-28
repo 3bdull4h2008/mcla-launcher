@@ -302,8 +302,9 @@
   }
 
   .tab-title {
+    font-family: 'MCLA_HUD_Original', 'MCLA_HUD_Local', Bahnschrift, sans-serif;
+    font-size: calc(21px * var(--ui-font-scale));
     color: var(--mcla-yellow);
-    font-size: calc(20px * var(--ui-font-scale));
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -3018,6 +3019,7 @@ window.MCLALauncherAPI = {
     if (activeConfig.main) activeConfig.main.install_lang = Object.keys(MCLA_LANG_CODES).find(k => MCLA_LANG_CODES[k] === window.__mclaInstallLang) || 'ENGLISH';
     if (activeConfig.launcher) activeConfig.launcher.ui_language = Object.keys(MCLA_LANG_CODES).find(k => MCLA_LANG_CODES[k] === window.__mclaInstallLang) || 'ENGLISH';
     document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+    if (typeof initHeaderTabs === 'function') initHeaderTabs();
     window.__mclaInstallRefresh();
   },
   setInstallSource: (p) => {
@@ -3226,8 +3228,8 @@ function makeDashedIconSvg(symbol, active, size) {
 
   return `<svg width="${size}" height="${size}" viewBox="0 0 36 36">
     <circle cx="18" cy="18" r="15" fill="${bgFill}"/>
+    <circle class="dash-glow" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="3.6" stroke-linecap="round" stroke-dasharray="12 86"/>
     <circle class="dash-ring" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="2.5" stroke-dasharray="6.2 3.5"/>
-    <circle class="dash-glow" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="20 78"/>
     ${inner}
   </svg>`;
 }
@@ -3242,7 +3244,7 @@ function initHeaderTabs() {
     btn.title = tab.title;
     const iconMap = { main: 'gamepad', launcher: 'check', graphics: 'display', files: 'files', mods: 'files' };
     const symbol = iconMap[tab.id] || tab.icon;
-    btn.innerHTML = `<span class="tab-icon-wrap">${makeDashedIconSvg(symbol, tab.id === currentTab, 27)}</span><span class="tab-title">${tab.title}</span>`;
+    btn.innerHTML = `<span class="tab-icon-wrap">${makeDashedIconSvg(symbol, tab.id === currentTab, 27)}</span><span class="tab-title">${mclaTabTitle(tab.id)}</span>`;
     btn.addEventListener('click', () => switchTab(tab.id));
     strip.appendChild(btn);
   });
@@ -3408,6 +3410,7 @@ function adjustSelected(delta) {
     window.__mclaInstallLang = mclaLangCode(nextVal);
     updateRowValueUI(row, opt, nextVal);
     window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
+    initHeaderTabs();
     window.__mclaInstallRefresh();
     return;
   }
@@ -3416,6 +3419,7 @@ function adjustSelected(delta) {
     updateRowValueUI(row, opt, nextVal);
     window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
     document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+    initHeaderTabs();
     return;
   }
   updateRowValueUI(row, opt, nextVal);
@@ -3461,8 +3465,8 @@ function renderFooterAndShoulders() {
     footer.innerHTML = `
       <div class="footer-left"></div>
       <div class="footer-right">
-        <button class="footer-prompt" id="btnFootExit">EXIT ${makePromptIcon('back')}</button>
-        <button class="footer-prompt" id="btnFootLaunch">ACCEPT ${makePromptIcon('accept')}</button>
+        <button class="footer-prompt" id="btnFootExit">${mclaText('exit')} ${makePromptIcon('back')}</button>
+        <button class="footer-prompt" id="btnFootLaunch">${mclaText('accept')} ${makePromptIcon('accept')}</button>
       </div>
     `;
     footer.querySelector('#btnFootExit').addEventListener('click', () => {
@@ -3476,11 +3480,11 @@ function renderFooterAndShoulders() {
   } else {
     footer.innerHTML = `
       <div class="footer-left">
-        <button class="footer-prompt" id="btnFootDefaults">${makePromptIcon('defaults')} DEFAULTS</button>
+        <button class="footer-prompt" id="btnFootDefaults">${makePromptIcon('defaults')} ${mclaText('defaults')}</button>
       </div>
       <div class="footer-right">
-        <button class="footer-prompt" id="btnFootBack">BACK ${makePromptIcon('back')}</button>
-        <button class="footer-prompt" id="btnFootApply">APPLY ${makePromptIcon('accept')}</button>
+        <button class="footer-prompt" id="btnFootBack">${mclaText('back')} ${makePromptIcon('back')}</button>
+        <button class="footer-prompt" id="btnFootApply">${mclaText('apply')} ${makePromptIcon('accept')}</button>
       </div>
     `;
     footer.querySelector('#btnFootDefaults').addEventListener('click', () => {
@@ -3519,6 +3523,30 @@ function updateRowValueUI(row, opt, newVal) {
 
 const MCLA_LANG_CODES = {'ENGLISH':'en','العربية':'ar','FRANÇAIS':'fr','ESPAÑOL':'es','DEUTSCH':'de','ITALIANO':'it'};
 function mclaLangCode(v) { return MCLA_LANG_CODES[v] || 'en'; }
+const MCLA_TAB_TITLES = {
+  en: { main:'PLAY', display:'DISPLAY', graphics:'GRAPHICS', controls:'CONTROLS', advanced:'ADVANCED', files:'TOOLS', launcher:'SETTINGS', mods:'MODS' },
+  ar: { main:'تشغيل', display:'العرض', graphics:'الرسوميات', controls:'التحكم', advanced:'متقدم', files:'الأدوات', launcher:'الإعدادات', mods:'المودات' },
+  fr: { main:'JOUER', display:'AFFICHAGE', graphics:'GRAPHIQUES', controls:'COMMANDES', advanced:'AVANCÉ', files:'OUTILS', launcher:'RÉGLAGES', mods:'MODS' },
+  es: { main:'JUGAR', display:'PANTALLA', graphics:'GRÁFICOS', controls:'CONTROLES', advanced:'AVANZADO', files:'HERRAMIENTAS', launcher:'AJUSTES', mods:'MODS' },
+  de: { main:'SPIELEN', display:'ANZEIGE', graphics:'GRAFIK', controls:'STEUERUNG', advanced:'ERWEITERT', files:'WERKZEUGE', launcher:'EINSTELLUNGEN', mods:'MODS' },
+  it: { main:'GIOCA', display:'DISPLAY', graphics:'GRAFICA', controls:'CONTROLLI', advanced:'AVANZATE', files:'STRUMENTI', launcher:'IMPOSTAZIONI', mods:'MOD' }
+};
+const MCLA_FOOTER_TEXT = {
+  en: { exit:'EXIT', accept:'ACCEPT', defaults:'DEFAULTS', back:'BACK', apply:'APPLY', play:'PLAY', playSub:'LAUNCH MCLA.EXE', quit:'QUIT', quitSub:'CLOSE THE LAUNCHER' },
+  ar: { exit:'خروج', accept:'تأكيد', defaults:'افتراضي', back:'رجوع', apply:'تطبيق', play:'تشغيل', playSub:'تشغيل اللعبة', quit:'إغلاق', quitSub:'إغلاق اللانشر' },
+  fr: { exit:'QUITTER', accept:'ACCEPTER', defaults:'DÉFAUT', back:'RETOUR', apply:'APPLIQUER', play:'JOUER', playSub:'LANCER LE JEU', quit:'QUITTER', quitSub:'FERMER' },
+  es: { exit:'SALIR', accept:'ACEPTAR', defaults:'VALORES', back:'VOLVER', apply:'APLICAR', play:'JUGAR', playSub:'INICIAR JUEGO', quit:'SALIR', quitSub:'CERRAR' },
+  de: { exit:'ENDE', accept:'BESTÄTIGEN', defaults:'STANDARD', back:'ZURÜCK', apply:'ANWENDEN', play:'SPIELEN', playSub:'SPIEL STARTEN', quit:'BEENDEN', quitSub:'SCHLIESSEN' },
+  it: { exit:'ESCI', accept:'CONFERMA', defaults:'PREDEFINITI', back:'INDIETRO', apply:'APPLICA', play:'GIOCA', playSub:'AVVIA GIOCO', quit:'ESCI', quitSub:'CHIUDI' }
+};
+function mclaText(key) {
+  const lang = window.__mclaInstallLang || 'en';
+  return (MCLA_FOOTER_TEXT[lang] || MCLA_FOOTER_TEXT.en)[key] || key;
+}
+function mclaTabTitle(id) {
+  const lang = window.__mclaInstallLang || 'en';
+  return (MCLA_TAB_TITLES[lang] || MCLA_TAB_TITLES.en)[id] || id.toUpperCase();
+}
 function mclaCvarGroup(k) {
   if (/audio|xma|sound|music|voice|gain/i.test(k)) return 'AUDIO';
   if (/render|shader|shadow|texture|gamma|hdr|color|colour|post|lod|fx/i.test(k)) return 'RENDER';
@@ -3700,6 +3728,7 @@ function renderSetupRows(screen, tabObj, animClass) {
     window.__mclaInstallLang = mclaLangCode(nv);
     document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
     window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
+    initHeaderTabs();
     renderScreen('none');
   });
   const srcRow = document.createElement('div');
@@ -3756,8 +3785,8 @@ function renderScreen(animDir) {
           <div class="row-left">
             <span class="row-arrow"></span>
             <div class="row-label-block">
-              <span class="row-label">${item.label}</span>
-              ${item.sub ? `<span class="row-sub-label">${item.sub}</span>` : ''}
+              <span class="row-label">${item.id === 'play' ? mclaText('play') : (item.id === 'quit' ? mclaText('quit') : item.label)}</span>
+              ${item.sub ? `<span class="row-sub-label">${item.id === 'play' ? mclaText('playSub') : (item.id === 'quit' ? mclaText('quitSub') : item.sub)}</span>` : ''}
             </div>
           </div>
         `;
@@ -3955,6 +3984,7 @@ function renderScreen(animDir) {
             window.__mclaInstallLang = mclaLangCode(nv);
             window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
             document.documentElement.dir = window.__mclaInstallLang === 'ar' ? 'rtl' : 'ltr';
+            initHeaderTabs();
             window.__mclaInstallRefresh();
             return;
           }
