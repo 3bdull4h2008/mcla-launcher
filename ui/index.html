@@ -679,6 +679,24 @@
 .tab-item.is-locked { opacity: 0.5; cursor: default; }
 .menu-row.is-locked, .menu-row.is-locked.is-selected { opacity: 0.5; cursor: default; }
 .menu-row.is-locked .text-value, .menu-row.is-locked .cycle-arrow { pointer-events: none; }
+
+html[dir="rtl"] { --tilt-y: 5.2deg; }
+html[dir="rtl"] .launcher-assembly.kick-next { transform: rotateX(var(--tilt-x)) rotateY(calc(var(--tilt-y) - 1.8deg)) scale(0.992); }
+html[dir="rtl"] .launcher-assembly.kick-prev { transform: rotateX(var(--tilt-x)) rotateY(calc(var(--tilt-y) + 1.8deg)) scale(0.992); }
+html[dir="rtl"] .menu-row { text-align: right; padding: 5px 12px 5px 14px; }
+html[dir="rtl"] .row-arrow { left: auto; right: 0; border-left: 0; border-right: 7.5px solid var(--mcla-cyan); transform: translateX(6px); }
+html[dir="rtl"] .menu-row.is-selected .row-arrow { transform: translateX(0); }
+html[dir="rtl"] .menu-row.is-selected .row-label-block { transform: translateX(-16px); }
+html[dir="rtl"] .menu-row.enter-next { animation-name: rowSlideInLeft; }
+html[dir="rtl"] .menu-row.enter-prev { animation-name: rowSlideInRight; }
+html[dir="rtl"] .hud-screen.exiting-next .menu-row,
+html[dir="rtl"] .hud-screen.exiting-next .sub-header-bar { animation-name: rowExitRight; }
+html[dir="rtl"] .hud-screen.exiting-prev .menu-row,
+html[dir="rtl"] .hud-screen.exiting-prev .sub-header-bar { animation-name: rowExitLeft; }
+html[dir="rtl"] .thin-slider-fill { margin-left: auto; }
+html[dir="rtl"] .tab-item.active .dash-ring { animation-direction: reverse; }
+html[dir="rtl"] .hud-toast { left: auto; right: 50%; transform: translateX(50%) translateY(10px); }
+html[dir="rtl"] .hud-toast.visible { transform: translateX(50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -732,7 +750,7 @@ window.MCLA_DEFAULT_SCHEMA = {
   "tabs": [
     {
       "id": "main",
-      "title": "LAUNCHER",
+      "title": "PLAY",
       "icon": "play",
       "visible": true,
       "isHome": true,
@@ -2689,7 +2707,7 @@ window.MCLA_DEFAULT_SCHEMA = {
     },
     {
       "id": "launcher",
-      "title": "LAUNCHER",
+      "title": "SETTINGS",
       "icon": "tuning",
       "visible": true,
       "subHeaderLeft": "< LAUNCHER // LANGUAGE >",
@@ -3780,13 +3798,16 @@ function renderScreen(animDir) {
         input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
       } else if (opt.type === 'cycle') {
         const isKey = String(opt.key).startsWith('mcla_key_');
+        const rtlUI = document.documentElement.dir === 'rtl';
+        const arrowL = rtlUI ? '&gt;' : '&lt;';
+        const arrowR = rtlUI ? '&lt;' : '&gt;';
         row.innerHTML = `
           <div class="row-left"><span class="row-arrow"></span><div class="row-label-block"><span class="row-label">${opt.label}</span></div></div>
           <div class="row-right">
             ${isKey ? `<button class="key-bind" title="Click then press any supported key; click again to cancel">${val}</button>` : `
-            <button class="cycle-arrow" data-dir="-1">&lt;</button>
+            <button class="cycle-arrow" data-dir="-1">${arrowL}</button>
             <span class="cycle-val ${val === 'ON' || val === 'ENABLED' ? 'is-on' : ''}">${val}</span>
-            <button class="cycle-arrow" data-dir="1">&gt;</button>`}
+            <button class="cycle-arrow" data-dir="1">${arrowR}</button>`}
           </div>
         `;
         if (isKey) {
