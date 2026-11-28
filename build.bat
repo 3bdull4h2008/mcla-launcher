@@ -13,7 +13,7 @@ cd /d "%~dp0"
 if not exist out mkdir out
 
 set "INC=-I sdk -I sdk\wv2"
-set "LIBS=user32.lib gdi32.lib ole32.lib dcomp.lib dwmapi.lib shlwapi.lib shell32.lib advapi32.lib comdlg32.lib"
+set "LIBS=user32.lib gdi32.lib ole32.lib dcomp.lib dwmapi.lib shlwapi.lib shell32.lib advapi32.lib comdlg32.lib urlmon.lib"
 
 rc /nologo /fo out\mcla_launcher.res src\mcla_launcher.rc
 if errorlevel 1 (

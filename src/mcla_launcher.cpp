@@ -12,6 +12,7 @@
 #include <shlwapi.h>
 #include <shlobj.h>
 #include <commdlg.h>
+#include <urlmon.h>
 #include <tlhelp32.h>
 #include <wincrypt.h>
 #include <string>
@@ -44,6 +45,8 @@ static ComPtr<ICoreWebView2>           g_web;
 static const wchar_t kOrigin[] = L"https://mcla.launcher/";
 static const wchar_t kRuntimeUrl[] = L"https://go.microsoft.com/fwlink/p/?LinkId=2124703";
 static const char kInstallVersion[] = "1.0.0-rc1";
+static const wchar_t kEngineUrl[] = L"https://github.com/3bdull4h2008/MCLArecomp_native/releases/download/engine-v1/mcla.exe";
+static const char kEngineSha256[] = "9abb0b72d5627edd6f982f49c5637a0ea25b18a50ef00be01f96c2cdd1869386";
 static const wchar_t kReadyRel[] = L"\\cache\\mcla_ready.json";
 static bool g_installMode = false;
 static std::wstring g_installSource;
@@ -450,6 +453,28 @@ static bool copyTree(const std::wstring& from, const std::wstring& to, std::stri
     return ok;
 }
 
+static bool ensureEngine(const std::wstring& gameDir, std::string& error) {
+    const std::wstring target = gameDir + L"\\mcla.exe";
+    std::string hash;
+    if (exists(target) && sha256OfFile(target, hash) && hash == kEngineSha256) return true;
+    const std::wstring tmp = target + L".download";
+    DeleteFileW(tmp.c_str());
+    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallProgress){window.MCLALauncherAPI.setInstallProgress(20,'copy')}");
+    HRESULT hr = URLDownloadToFileW(nullptr, kEngineUrl, tmp.c_str(), 0, nullptr);
+    if (FAILED(hr) || !exists(tmp)) { error = "engine download failed"; DeleteFileW(tmp.c_str()); return false; }
+    hash.clear();
+    if (!sha256OfFile(tmp, hash) || hash != kEngineSha256) {
+        error = "engine hash mismatch";
+        DeleteFileW(tmp.c_str());
+        return false;
+    }
+    if (!MoveFileExW(tmp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        error = "engine install failed";
+        return false;
+    }
+    return true;
+}
+
 static bool extractIso(const std::wstring& iso, const std::wstring& gameDir, std::string& error) {
     HANDLE h = CreateFileW(iso.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE) { error = "cannot open ISO"; return false; }
@@ -492,6 +517,7 @@ static bool extractIso(const std::wstring& iso, const std::wstring& gameDir, std
 
 static bool runInstall(const std::wstring& src, const std::wstring& gameDir, const std::wstring& uiDir, std::string& error) {
     if (!g_isoPath.empty()) {
+        if (!ensureEngine(gameDir, error)) return false;
         if (!extractIso(g_isoPath, gameDir, error)) return false;
         if (!writeReadyMarker(gameDir, uiDir)) { error = "verification failed; ready marker was not created"; return false; }
         cleanupDevFiles(gameDir);
@@ -1421,6 +1447,7 @@ int WINAPI wWinMain(HINSTANCE hi, HINSTANCE, PWSTR, int) {
         g_cacheDir = g_gameDir + L"\\cache";
         g_isoPath = iso;
         std::string err;
+        if (!ensureEngine(g_gameDir, err)) { fprintf(stderr, "ENGINE: %s\n", err.c_str()); return 5; }
         if (!extractIso(iso, g_gameDir, err)) { fprintf(stderr, "ISO: %s\n", err.c_str()); return 3; }
         if (!writeReadyMarker(g_gameDir, L"")) { fprintf(stderr, "MARKER failed\n"); return 4; }
         cleanupDevFiles(g_gameDir);
