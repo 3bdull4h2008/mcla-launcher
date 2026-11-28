@@ -3229,8 +3229,8 @@ function makeDashedIconSvg(symbol, active, size) {
 
   return `<svg width="${size}" height="${size}" viewBox="0 0 36 36">
     <circle cx="18" cy="18" r="15" fill="${bgFill}"/>
+    <circle class="disc-glow" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="4.6" stroke-linecap="round" stroke-dasharray="12 86"/>
     <circle class="dash-ring" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="2.5" stroke-dasharray="6.2 3.5"/>
-    <circle class="disc-glow" cx="18" cy="18" r="10.5" fill="none" stroke="${col}" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="14 52"/>
     ${inner}
   </svg>`;
 }
@@ -3243,9 +3243,7 @@ function initHeaderTabs() {
     btn.className = 'tab-item' + (tab.id === currentTab ? ' active' : '');
     btn.dataset.tabId = tab.id;
     btn.title = tab.title;
-    const iconMap = { main: 'gamepad', launcher: 'check', graphics: 'display', files: 'files', mods: 'files' };
-    const symbol = iconMap[tab.id] || tab.icon;
-    btn.innerHTML = `<span class="tab-icon-wrap">${makeDashedIconSvg(symbol, tab.id === currentTab, 27)}</span><span class="tab-title">${mclaTabTitle(tab.id)}</span>`;
+    btn.innerHTML = `<span class="tab-icon-wrap">${makeDashedIconSvg(mclaTabIcon(tab), tab.id === currentTab, 27)}</span><span class="tab-title">${mclaTabTitle(tab.id)}</span>`;
     btn.addEventListener('click', () => switchTab(tab.id));
     strip.appendChild(btn);
   });
@@ -3259,7 +3257,7 @@ function updateHeaderTabsState() {
     const isAct = (tId === currentTab);
     const tabObj = activeSchema.tabs.find(t => t.id === tId);
     btn.classList.toggle('active', isAct);
-    btn.querySelector('.tab-icon-wrap').innerHTML = makeDashedIconSvg(tabObj.icon, isAct, isAct ? 28 : 26);
+    btn.querySelector('.tab-icon-wrap').innerHTML = makeDashedIconSvg(mclaTabIcon(tabObj), isAct, isAct ? 28 : 26);
   });
 }
 
@@ -3590,6 +3588,10 @@ function mclaSubHeader(text) {
   let out = text;
   for (const k of Object.keys(map)) out = out.split(k).join(map[k]);
   return out;
+}
+function mclaTabIcon(tab) {
+  const map = { main: 'gamepad', launcher: 'check', graphics: 'display', files: 'files', mods: 'files' };
+  return map[tab.id] || tab.icon;
 }
 function mclaTabTitle(id) {
   const lang = window.__mclaInstallLang || 'en';
