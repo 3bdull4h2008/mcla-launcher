@@ -3179,7 +3179,7 @@ document.addEventListener('mousedown', (e) => {
 
 function switchTab(nextTabId, direction) {
   if (nextTabId === currentTab || isTransitioning) return;
-  if (!window.__mclaInstallReady && nextTabId !== 'main' && currentTab !== 'main') return;
+  if (!window.__mclaInstallReady && nextTabId !== 'main') return;
   cancelKeyListening();
   isTransitioning = true;
 
