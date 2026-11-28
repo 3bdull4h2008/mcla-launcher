@@ -37,6 +37,14 @@
     --mcla-text-dim: #9aa4aa;
     --tilt-x: 1.4deg;
     --tilt-y: -5.2deg;
+    --ui-font-scale: 1.18;
+    --panel-blur: 8px;
+    --anim-mult: 1;
+    --glow-speed: 6s;
+  }
+  html.no-anim *, html.no-anim *::before, html.no-anim *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
   }
 
   * {
@@ -295,7 +303,7 @@
 
   .tab-title {
     color: var(--mcla-yellow);
-    font-size: 20px;
+    font-size: calc(20px * var(--ui-font-scale));
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -314,9 +322,9 @@
   /* 268px screen height fits subheader + 6 rows cleanly inside 650x446 */
   .hud-screen {
     position: relative;
-    background: rgba(6, 8, 10, 0.56);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
+    background: rgba(6, 8, 10, 0.38);
+    backdrop-filter: blur(var(--panel-blur));
+    -webkit-backdrop-filter: blur(var(--panel-blur));
     border: 1px solid rgba(216, 222, 226, 0.62);
     border-radius: 3px 10px 10px 10px;
     box-shadow: inset 0 0 0 2px rgba(120, 132, 140, 0.34), inset 0 0 18px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.42);
@@ -419,21 +427,21 @@
   }
 
   .menu-row.enter-next {
-    animation: rowSlideInRight 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rowSlideInRight calc(160ms / var(--anim-mult)) cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: calc(min(var(--row-idx, 0), 5) * 12ms);
   }
   .menu-row.enter-prev {
-    animation: rowSlideInLeft 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rowSlideInLeft calc(160ms / var(--anim-mult)) cubic-bezier(0.22, 1, 0.36, 1) both;
     animation-delay: calc(min(var(--row-idx, 0), 5) * 12ms);
   }
   .hud-screen.exiting-next .menu-row,
   .hud-screen.exiting-next .sub-header-bar {
-    animation: rowExitLeft 95ms ease-in forwards;
+    animation: rowExitLeft calc(95ms / var(--anim-mult)) ease-in forwards;
     animation-delay: 0ms;
   }
   .hud-screen.exiting-prev .menu-row,
   .hud-screen.exiting-prev .sub-header-bar {
-    animation: rowExitRight 95ms ease-in forwards;
+    animation: rowExitRight calc(95ms / var(--anim-mult)) ease-in forwards;
     animation-delay: 0ms;
   }
 
@@ -474,7 +482,7 @@
   }
 
   .row-label {
-    font-size: 19px;
+    font-size: calc(19px * var(--ui-font-scale));
     font-weight: 700;
     letter-spacing: 0.04em;
     color: var(--mcla-text);
@@ -488,7 +496,7 @@
   }
 
   .row-sub-label {
-    font-size: 12px;
+    font-size: calc(12px * var(--ui-font-scale));
     font-weight: 600;
     letter-spacing: 0.04em;
     color: var(--mcla-text-dim);
@@ -523,7 +531,7 @@
   .cycle-val {
     min-width: 112px;
     text-align: center;
-    font-size: 16.5px;
+    font-size: calc(16.5px * var(--ui-font-scale));
     font-weight: 700;
     letter-spacing: 0.04em;
     color: #dce4e8;
@@ -638,7 +646,7 @@
     cursor: pointer;
     font-family: inherit;
     color: #eef3f5;
-    font-size: 16px;
+    font-size: calc(16px * var(--ui-font-scale));
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -682,7 +690,7 @@
 .dash-glow { opacity: 0; }
 .tab-item.active .dash-glow {
   opacity: 1;
-  animation: mclaGlowSpin 6s linear infinite;
+  animation: mclaGlowSpin var(--glow-speed) linear infinite;
   transform-origin: 50% 50%;
   transform-box: fill-box;
   filter: drop-shadow(0 0 2px #d6e93a);
@@ -2722,7 +2730,7 @@ window.MCLA_DEFAULT_SCHEMA = {
       "title": "SETTINGS",
       "icon": "tuning",
       "visible": true,
-      "subHeaderLeft": "< LAUNCHER // LANGUAGE >",
+      "subHeaderLeft": "< LAUNCHER // SETTINGS >",
       "subHeaderRight": "UI",
       "options": [
         {
@@ -2732,6 +2740,52 @@ window.MCLA_DEFAULT_SCHEMA = {
           "visible": true,
           "values": ["ENGLISH", "العربية", "FRANÇAIS", "ESPAÑOL", "DEUTSCH", "ITALIANO"],
           "default": "ENGLISH"
+        },
+        {
+          "key": "ui_font_scale",
+          "label": "TEXT SIZE",
+          "type": "slider",
+          "visible": true,
+          "min": 0.9,
+          "max": 1.5,
+          "step": 0.02,
+          "default": 1.18
+        },
+        {
+          "key": "ui_blur",
+          "label": "PANEL BLUR",
+          "type": "slider",
+          "visible": true,
+          "min": 0,
+          "max": 16,
+          "step": 1,
+          "default": 8
+        },
+        {
+          "key": "ui_anim",
+          "label": "ANIMATIONS",
+          "type": "cycle",
+          "visible": true,
+          "values": ["ON", "OFF"],
+          "default": "ON"
+        },
+        {
+          "key": "ui_glow",
+          "label": "GLOW SPEED",
+          "type": "slider",
+          "visible": true,
+          "min": 2,
+          "max": 12,
+          "step": 0.5,
+          "default": 6
+        },
+        {
+          "key": "ui_window_drag",
+          "label": "WINDOW DRAG",
+          "type": "cycle",
+          "visible": true,
+          "values": ["ON", "OFF"],
+          "default": "ON"
         }
       ]
     },
@@ -2982,6 +3036,11 @@ window.MCLALauncherAPI = {
     window.__mclaInstallRefresh();
   },
   logError: (kind, detail) => window.MCLALauncherAPI.emitAction('logError', { kind: kind, detail: detail }),
+  loadUiPrefs: (p) => {
+    if (!p || typeof p !== 'object') return;
+    window.__mclaUiPrefs = Object.assign({}, window.__mclaUiPrefs, p);
+    mclaApplyUiPrefs(false);
+  },
   onAction: (fn) => {
     if (typeof fn === 'function') actionListeners.push(fn);
   },
@@ -3344,6 +3403,7 @@ function adjustSelected(delta) {
     return;
   }
   activeConfig[tabObj.id][opt.key] = nextVal;
+  if (mclaHandleUiOption(opt, row, nextVal)) return;
   if (opt.key === 'install_lang') {
     window.__mclaInstallLang = mclaLangCode(nextVal);
     updateRowValueUI(row, opt, nextVal);
@@ -3502,6 +3562,32 @@ function mclaBadInput(kind, detail) {
   if (window.MCLALauncherAPI && window.MCLALauncherAPI.logError) window.MCLALauncherAPI.logError(kind, detail || '');
   if (typeof showToast === 'function') showToast(msg);
   return msg;
+}
+window.__mclaUiPrefs = { fontScale: 1.18, blur: 8, anim: 1, glow: 6, drag: 1 };
+function mclaApplyUiPrefs(emit) {
+  const p = window.__mclaUiPrefs;
+  const root = document.documentElement.style;
+  root.setProperty('--ui-font-scale', String(p.fontScale));
+  root.setProperty('--panel-blur', p.blur + 'px');
+  root.setProperty('--anim-mult', String(p.anim));
+  root.setProperty('--glow-speed', p.glow + 's');
+  document.documentElement.classList.toggle('no-anim', p.anim === 0);
+  const strip = document.getElementById('windowDragStrip');
+  if (strip) strip.style.pointerEvents = p.drag ? '' : 'none';
+  if (emit !== false) window.MCLALauncherAPI.emitAction('setUiPrefs', Object.assign({}, p));
+}
+function mclaHandleUiOption(opt, row, val) {
+  if (!opt || !opt.key || opt.key.indexOf('ui_') !== 0 || opt.key === 'ui_language') return false;
+  const p = window.__mclaUiPrefs;
+  if (opt.key === 'ui_font_scale') p.fontScale = Number(val);
+  else if (opt.key === 'ui_blur') p.blur = Number(val);
+  else if (opt.key === 'ui_anim') p.anim = val === 'ON' ? 1 : 0;
+  else if (opt.key === 'ui_glow') p.glow = Number(val);
+  else if (opt.key === 'ui_window_drag') p.drag = val === 'ON' ? 1 : 0;
+  else return false;
+  if (row) updateRowValueUI(row, opt, val);
+  mclaApplyUiPrefs(true);
+  return true;
 }
 window.__mclaInstallReady = false;
 window.__mclaInstallLang = 'en';
@@ -3864,6 +3950,7 @@ function renderScreen(animDir) {
           const nv = opt.values[nxt];
           activeConfig[tabObj.id][opt.key] = nv;
           updateRowValueUI(row, opt, nv);
+          if (mclaHandleUiOption(opt, row, nv)) return;
           if (opt.key === 'ui_language' || opt.key === 'install_lang') {
             window.__mclaInstallLang = mclaLangCode(nv);
             window.MCLALauncherAPI.emitAction('setInstallLanguage', { language: window.__mclaInstallLang });
@@ -4046,6 +4133,7 @@ function emitReadyOnce() {
   window.MCLALauncherAPI.emitAction('ready', { version: '1.0' });
 }
 
+mclaApplyUiPrefs(false);
 emitReadyOnce();
 </script>
 </body>

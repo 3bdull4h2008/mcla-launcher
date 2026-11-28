@@ -86,11 +86,12 @@ Rejected inputs are mapped to actions in `docs/BAD_INPUT_MAP.md` and logged to
 left stick up/down), and double-press confirmation for reset, restore and quitting with unsaved
 changes.
 
-After installation the launcher exposes: DISPLAY additions (brightness, gamma, aspect ratio,
-HDR10, reported resolution, HUD scale), GRAPHICS presets (LOW/MEDIUM/HIGH), CONTROLS presets
-(WASD/XBOX/CUSTOM) with double-press reset confirmation, ADVANCED CVars grouped by
-RENDER/AUDIO/ENGINE/DEBUG, a manual `cache/mcla.toml.bak` backup button, and LAUNCHER settings
-for changing the language.
+After installation the launcher exposes: DISPLAY options (display mode, resolution, render scale,
+FPS limit, VSync, aspect ratio, HUD scale, HDR10, gamma), GRAPHICS presets (LOW/MEDIUM/HIGH),
+CONTROLS presets (WASD/XBOX/CUSTOM) with double-press reset confirmation, ADVANCED CVars grouped
+by RENDER/AUDIO/ENGINE/DEBUG, a manual `cache/mcla.toml.bak` backup button, and SETTINGS for
+language, text size, panel blur, animations, glow speed and window drag. These launcher-only
+preferences persist in `mcla_launcher.ini [launcher]`.
 
 Host bridge actions added for this flow: `getInstallStatus`, `chooseInstallSource`,
 `runInstall`, `setInstallLanguage`, `cancelInstall`. The host answers with `loadInstallStatus`,

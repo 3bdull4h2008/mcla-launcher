@@ -59,6 +59,7 @@ static const wchar_t kReadyRel[] = L"\\cache\\mcla_ready.json";
 static bool g_installMode = false;
 static std::wstring g_installSource;
 static std::wstring g_isoPath;
+static bool g_windowDrag = true;
 static std::string slurp(const std::wstring& p);
 static void eval(const std::string& js);
 static void cleanupDevFiles(const std::wstring& gameDir);
@@ -1162,6 +1163,12 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
             wchar_t lang[16] = {};
             GetPrivateProfileStringW(L"launcher", L"installLang", L"en", lang, 16, g_ini.c_str());
             eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallLanguage){window.MCLALauncherAPI.setInstallLanguage('" + normalizeLang(narrow(lang)) + "')}");
+            wchar_t fs[32] = {}, bl[32] = {}, an[8] = {}, gs[32] = {};
+            GetPrivateProfileStringW(L"launcher", L"uiFontScale", L"1.18", fs, 32, g_ini.c_str());
+            GetPrivateProfileStringW(L"launcher", L"uiBlur", L"8", bl, 32, g_ini.c_str());
+            GetPrivateProfileStringW(L"launcher", L"uiAnim", L"1", an, 8, g_ini.c_str());
+            GetPrivateProfileStringW(L"launcher", L"uiGlow", L"6", gs, 32, g_ini.c_str());
+            eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadUiPrefs){window.MCLALauncherAPI.loadUiPrefs({fontScale:" + narrow(fs) + ",blur:" + narrow(bl) + ",anim:" + std::string(an[0] == L'0' ? "0" : "1") + ",glow:" + narrow(gs) + ",drag:" + std::string(g_windowDrag ? "1" : "0") + "})}");
             eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallSource){window.MCLALauncherAPI.setInstallSource('" + jesc(narrow(g_installSource)) + "')}");
             if (!g_installMode) adoptExistingInstall(g_gameDir, g_uiDir);
             const InstallCheck install = checkInstall(g_gameDir, g_uiDir);
@@ -1236,6 +1243,14 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
             eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
         } else if (action == "cancelInstall") {
             WritePrivateProfileStringW(L"launcher", L"installCancelled", L"1", g_ini.c_str());
+        } else if (action == "setUiPrefs") {
+            const JVal* f = jget(root, "fontScale"); const JVal* b = jget(root, "blur");
+            const JVal* a = jget(root, "anim"); const JVal* g = jget(root, "glow"); const JVal* d = jget(root, "drag");
+            if (f) WritePrivateProfileStringW(L"launcher", L"uiFontScale", widen(f->s.empty() ? "1.18" : f->s).c_str(), g_ini.c_str());
+            if (b) WritePrivateProfileStringW(L"launcher", L"uiBlur", widen(b->s.empty() ? "8" : b->s).c_str(), g_ini.c_str());
+            if (a) WritePrivateProfileStringW(L"launcher", L"uiAnim", a->s == "0" ? L"0" : L"1", g_ini.c_str());
+            if (g) WritePrivateProfileStringW(L"launcher", L"uiGlow", widen(g->s.empty() ? "6" : g->s).c_str(), g_ini.c_str());
+            if (d) { g_windowDrag = d->s != "0"; WritePrivateProfileStringW(L"launcher", L"uiWindowDrag", g_windowDrag ? L"1" : L"0", g_ini.c_str()); }
         } else if (action == "logError") {
             const JVal* kv = jget(root, "kind");
             const JVal* dv = jget(root, "detail");
@@ -1264,6 +1279,7 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
             const std::string preset = (pv && pv->type == JVal::STR) ? pv->s : "";
             if (action == "applyGraphicsPreset") applyGraphicsPreset(preset); else applyControlPreset(preset);
         } else if (action == "dragWindow") {
+            if (!g_windowDrag) return S_OK;
             ReleaseCapture(); SendMessageW(g_hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
         } else if (action == "launchGame") {
             writeToml(extraToml, g_ini, g_cacheDir + L"\\mcla.toml"); launchGame();
@@ -1405,11 +1421,13 @@ struct EnvHandler : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHa
 };
 
 static bool resolveGameDir() {
-    wchar_t buf[MAX_PATH] = {}, src[MAX_PATH] = {}, iso[MAX_PATH] = {}, lang[16] = {};
+    wchar_t buf[MAX_PATH] = {}, src[MAX_PATH] = {}, iso[MAX_PATH] = {}, lang[16] = {}, drag[8] = {};
     GetPrivateProfileStringW(L"launcher", L"gameDir", L"", buf, MAX_PATH, g_ini.c_str());
     GetPrivateProfileStringW(L"launcher", L"installSource", L"", src, MAX_PATH, g_ini.c_str());
     GetPrivateProfileStringW(L"launcher", L"isoPath", L"", iso, MAX_PATH, g_ini.c_str());
     GetPrivateProfileStringW(L"launcher", L"installLang", L"en", lang, 16, g_ini.c_str());
+    GetPrivateProfileStringW(L"launcher", L"uiWindowDrag", L"1", drag, 8, g_ini.c_str());
+    g_windowDrag = drag[0] != L'0';
     g_installSource = src;
     g_isoPath = iso;
     std::wstring cand[] = {
@@ -1484,7 +1502,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const double cssToPhysical = g_dpi / 96.0 * g_zoom;
         const int dragH = (int)std::lround(24 * cssToPhysical);
         const int controlsW = (int)std::lround(80 * cssToPhysical);
-        if (p.y >= 0 && p.y < dragH && p.x < g_w - controlsW) return HTCAPTION;
+        if (g_windowDrag && p.y >= 0 && p.y < dragH && p.x < g_w - controlsW) return HTCAPTION;
         return HTCLIENT;
     }
     case WM_CLOSE: DestroyWindow(h); return 0;
