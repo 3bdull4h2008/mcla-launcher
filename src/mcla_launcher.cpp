@@ -106,8 +106,8 @@ static std::wstring ensureBundledResources(HMODULE mod) {
     writeResource(mod, 6, ui + L"\\fonts\\rajdhani-700.woff2");
     writeResource(mod, 7, ui + L"\\fonts\\saira-600.woff2");
     writeResource(mod, 8, ui + L"\\fonts\\saira-700.woff2");
-    writeResource(mod, 10, ui + L"\\fonts\\noto-kufi-arabic-700.woff2");
-    writeResource(mod, 11, ui + L"\\fonts\\OFL-NotoKufiArabic.txt");
+    writeResource(mod, 10, ui + L"\\fonts\\noto-sans-arabic-700.woff2");
+    writeResource(mod, 11, ui + L"\\fonts\\OFL-NotoSansArabic.txt");
     writeResource(mod, 9, webview + L"\\WebView2Loader.dll");
     return webview;
 }
