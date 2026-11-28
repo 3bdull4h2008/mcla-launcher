@@ -3935,20 +3935,14 @@ document.addEventListener('keydown', (e) => {
   const code = e.code || '';
   const isQ = code === 'KeyQ' || k === 'q' || k === 'Q';
   const isE = code === 'KeyE' || k === 'e' || k === 'E';
-  const isW = code === 'KeyW' || k === 'w' || k === 'W';
-  const isS = code === 'KeyS' || k === 's' || k === 'S';
   const handled = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter','Escape','Backspace','Tab',' '];
   if (handled.includes(k) || isQ || isE || isW || isS) { e.preventDefault(); e.stopPropagation(); }
   if (k === 'Tab') { moveSelection(e.shiftKey ? -1 : 1); return; }
   if (isQ && !e.repeat) prevTab();
   if (isE && !e.repeat) nextTab();
-  if (k === 'ArrowUp' || isW) moveSelection(-1);
-  if (k === 'ArrowDown' || isS) moveSelection(1);
-  if (k === 'ArrowLeft' || k === 'ArrowRight') {
-    const tabObj = activeSchema.tabs.find(t => t.id === currentTab) || activeSchema.tabs[0];
-    if (tabObj.isHome) (k === 'ArrowLeft' ? prevTab() : nextTab());
-    else adjustSelected(k === 'ArrowLeft' ? -1 : 1);
-  }
+  if (k === 'ArrowUp') moveSelection(-1);
+  if (k === 'ArrowDown') moveSelection(1);
+  if (k === 'ArrowLeft' || k === 'ArrowRight') adjustSelected(k === 'ArrowLeft' ? -1 : 1);
   if ((k === 'Enter' || k === ' ') && !e.repeat) activateSelectedRow();
   if ((k === 'Escape' || k === 'Backspace') && currentTab !== 'main' && !e.repeat) switchTab('main', 'prev');
 });
