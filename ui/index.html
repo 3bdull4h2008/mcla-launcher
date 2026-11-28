@@ -10,6 +10,7 @@
   @font-face { font-family: 'Rajdhani'; font-weight: 700; font-display: swap; src: url('fonts/rajdhani-700.woff2') format('woff2'); }
   @font-face { font-family: 'Saira Semi Condensed'; font-weight: 600; font-display: swap; src: url('fonts/saira-600.woff2') format('woff2'); }
   @font-face { font-family: 'Saira Semi Condensed'; font-weight: 700; font-display: swap; src: url('fonts/saira-700.woff2') format('woff2'); }
+  @font-face { font-family: 'MCLA_HUD_Original'; font-weight: 400; font-display: swap; src: url('fonts/ooh-bahn-fixed-width.woff2') format('woff2'); }
   @font-face {
     font-family: 'MCLA_AR';
     font-weight: 600 700;
@@ -50,10 +51,10 @@
     width: 650px;
     height: 446px;
     overflow: hidden;
-    font-family: 'MCLA_HUD_Local', 'Bahnschrift', 'Saira Semi Condensed', 'Rajdhani', 'Liberation Sans Narrow', sans-serif;
+    font-family: 'MCLA_HUD_Original', 'MCLA_HUD_Local', 'Bahnschrift', 'Saira Semi Condensed', sans-serif;
   }
   html[dir="rtl"] body {
-    font-family: 'MCLA_AR', 'MCLA_HUD_Local', 'Bahnschrift', 'Saira Semi Condensed', sans-serif;
+    font-family: 'MCLA_AR', 'MCLA_HUD_Original', 'MCLA_HUD_Local', 'Bahnschrift', sans-serif;
   }
   body {
     background: radial-gradient(circle at 50% 48%, #1c2226 0%, #101417 58%, #090b0d 100%);
@@ -313,9 +314,12 @@
   /* 268px screen height fits subheader + 6 rows cleanly inside 650x446 */
   .hud-screen {
     position: relative;
-    background: var(--mcla-screen-bg);
-    border-radius: 0 10px 10px 10px;
-    border: none;
+    background: rgba(6, 8, 10, 0.56);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    border: 1px solid rgba(216, 222, 226, 0.62);
+    border-radius: 3px 10px 10px 10px;
+    box-shadow: inset 0 0 0 2px rgba(120, 132, 140, 0.34), inset 0 0 18px rgba(0, 0, 0, 0.55), 0 2px 10px rgba(0, 0, 0, 0.42);
     padding: 3px 0 5px 0;
     height: 268px;
     display: flex;
@@ -674,8 +678,16 @@
 .hud-screen::-webkit-scrollbar-thumb { background: var(--mcla-bezel-border); border-radius: 3px; }
 .menu-row.key-listening .key-bind { color: var(--mcla-yellow) !important; animation: keyListenPulse 0.8s ease-in-out infinite alternate; }
 @keyframes keyListenPulse { from { opacity: 1; } to { opacity: 0.45; } }
-@keyframes mclaRingSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.tab-item.active .dash-ring { animation: mclaRingSpin 6s linear infinite; transform-origin: 50% 50%; transform-box: fill-box; }
+@keyframes mclaGlowSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.dash-glow { opacity: 0; }
+.tab-item.active .dash-glow {
+  opacity: 1;
+  animation: mclaGlowSpin 6s linear infinite;
+  transform-origin: 50% 50%;
+  transform-box: fill-box;
+  filter: drop-shadow(0 0 2px #d6e93a);
+}
+html[dir="rtl"] .tab-item.active .dash-glow { animation-direction: reverse; }
 .tab-item.is-locked { opacity: 0.5; cursor: default; }
 .menu-row.is-locked, .menu-row.is-locked.is-selected { opacity: 0.5; cursor: default; }
 .menu-row.is-locked .text-value, .menu-row.is-locked .cycle-arrow { pointer-events: none; }
@@ -3140,11 +3152,23 @@ function makeDashedIconSvg(symbol, active, size) {
   } else if (symbol === 'files') {
     inner = `<rect x="11.5" y="13" width="13" height="10" rx="1.2" fill="none" stroke="${col}" stroke-width="1.9"/>
              <line x1="11.5" y1="16.5" x2="24.5" y2="16.5" stroke="${col}" stroke-width="1.9"/>`;
+  } else if (symbol === 'gamepad') {
+    inner = `<path d="M10.5 14.2 Q12 12.4 15.4 13.3 L20.6 13.3 Q24 12.4 25.5 14.2 Q27.2 16.6 25.7 20.2 Q24.6 22.8 22.7 21.5 L21 20.1 L15 20.1 L13.3 21.5 Q11.4 22.8 10.3 20.2 Q8.8 16.6 10.5 14.2 Z" fill="none" stroke="${col}" stroke-width="1.7"/>
+             <line x1="13.6" y1="16.3" x2="13.6" y2="18.5" stroke="${col}" stroke-width="1.7"/>
+             <line x1="12.5" y1="17.4" x2="14.7" y2="17.4" stroke="${col}" stroke-width="1.7"/>
+             <circle cx="21.3" cy="16.6" r="1.1" fill="${col}"/>
+             <circle cx="23" cy="18.4" r="1.1" fill="${col}"/>`;
+  } else if (symbol === 'check') {
+    inner = `<path d="M11.5 18.2 L15.8 22 L24.5 13.5" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  } else if (symbol === 'pause') {
+    inner = `<rect x="13.4" y="12.6" width="3.4" height="10.8" rx="1" fill="${col}"/>
+             <rect x="19.2" y="12.6" width="3.4" height="10.8" rx="1" fill="${col}"/>`;
   }
 
   return `<svg width="${size}" height="${size}" viewBox="0 0 36 36">
     <circle cx="18" cy="18" r="15" fill="${bgFill}"/>
     <circle class="dash-ring" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="2.5" stroke-dasharray="6.2 3.5"/>
+    <circle class="dash-glow" cx="18" cy="18" r="15.5" fill="none" stroke="${col}" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="20 78"/>
     ${inner}
   </svg>`;
 }
@@ -3157,7 +3181,9 @@ function initHeaderTabs() {
     btn.className = 'tab-item' + (tab.id === currentTab ? ' active' : '');
     btn.dataset.tabId = tab.id;
     btn.title = tab.title;
-    btn.innerHTML = `<span class="tab-icon-wrap">${makeDashedIconSvg(tab.icon, tab.id === currentTab, 27)}</span><span class="tab-title">${tab.title}</span>`;
+    const iconMap = { main: 'gamepad', launcher: 'check', graphics: 'display', files: 'files', mods: 'files' };
+    const symbol = iconMap[tab.id] || tab.icon;
+    btn.innerHTML = `<span class="tab-icon-wrap">${makeDashedIconSvg(symbol, tab.id === currentTab, 27)}</span><span class="tab-title">${tab.title}</span>`;
     btn.addEventListener('click', () => switchTab(tab.id));
     strip.appendChild(btn);
   });
@@ -3356,9 +3382,17 @@ function attachRowEvents(row, idx) {
   });
 }
 
+function makeShoulderIcon(label) {
+  return `<svg width="38" height="22" viewBox="0 0 38 22">
+    <defs><linearGradient id="shB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e8eef2"/><stop offset="100%" stop-color="#99a4ac"/></linearGradient></defs>
+    <rect x="2" y="2" width="34" height="18" rx="4" fill="url(#shB)" stroke="#1b2024" stroke-width="1.4"/>
+    <text x="19" y="15" text-anchor="middle" fill="#101418" font-size="12" font-weight="800" font-family="inherit">${label}</text>
+  </svg>`;
+}
+
 function renderFooterAndShoulders() {
-  document.getElementById('btnPrevTab').innerHTML = makePromptIcon('prev');
-  document.getElementById('btnNextTab').innerHTML = makePromptIcon('next');
+  document.getElementById('btnPrevTab').innerHTML = makeShoulderIcon('L1');
+  document.getElementById('btnNextTab').innerHTML = makeShoulderIcon('R1');
   const footer = document.getElementById('hudFooter');
   const tabObj = activeSchema.tabs.find(t => t.id === currentTab) || activeSchema.tabs[0];
   footer.innerHTML = '';
