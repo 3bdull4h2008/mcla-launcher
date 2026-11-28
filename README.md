@@ -4,7 +4,7 @@ A transparent WebView2 launcher UI for **Midnight Club: Los Angeles (PC recomp)*
 
 ![Launcher demo](launcher-demo.gif)
 
-The visual target is the game's own menus: the same typography, spacing, motion and HUD language, so the launcher feels like part of Midnight Club rather than a generic AI-looking settings wrapper.
+The visual target is the game's own menus: the same typography, spacing, motion and HUD language, so the launcher feels like part of Midnight Club rather than a generic AI-looking settings wrapper. Arabic UI text uses Noto Kufi Arabic Bold (bundled, SIL OFL 1.1 in `ui/fonts/OFL-NotoKufiArabic.txt`) because its angular shapes match the game's DIN/Bahnschrift HUD; Latin text keeps the original game-style font.
 
 This is a **separate project** from the game (`mcla pc`). It produces `mcla_launcher.exe`,
 which you copy next to `mcla.exe` in the game's `build/` directory. It never modifies

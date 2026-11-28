@@ -16,6 +16,7 @@
 #include <tlhelp32.h>
 #include <wincrypt.h>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <sstream>
 #include <fstream>
@@ -105,6 +106,8 @@ static std::wstring ensureBundledResources(HMODULE mod) {
     writeResource(mod, 6, ui + L"\\fonts\\rajdhani-700.woff2");
     writeResource(mod, 7, ui + L"\\fonts\\saira-600.woff2");
     writeResource(mod, 8, ui + L"\\fonts\\saira-700.woff2");
+    writeResource(mod, 10, ui + L"\\fonts\\noto-kufi-arabic-700.woff2");
+    writeResource(mod, 11, ui + L"\\fonts\\OFL-NotoKufiArabic.txt");
     writeResource(mod, 9, webview + L"\\WebView2Loader.dll");
     return webview;
 }
@@ -356,13 +359,16 @@ static bool sha256OfFile(const std::wstring& path, std::string& hex) {
     out[64] = 0; hex = out; return true;
 }
 
-static void dirFingerprint(const std::wstring& dir, unsigned long long& count, unsigned long long& bytes) {
+static void dirFingerprint(const std::wstring& dir, unsigned long long& count, unsigned long long& bytes,
+                           bool excludeMods = false) {
     std::wstring pattern = dir + L"\\*";
     WIN32_FIND_DATAW fd{};
     HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
     if (h == INVALID_HANDLE_VALUE) return;
     do {
         if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L"..")) continue;
+        if (excludeMods && !_wcsicmp(fd.cFileName, L"mods") &&
+            (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
         std::wstring p = dir + L"\\" + fd.cFileName;
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) dirFingerprint(p, count, bytes);
         else { ++count; bytes += ((unsigned long long)fd.nFileSizeHigh << 32) | fd.nFileSizeLow; }
@@ -373,6 +379,7 @@ static void dirFingerprint(const std::wstring& dir, unsigned long long& count, u
 struct InstallCheck {
     bool complete = false;
     bool markerValid = false;
+    bool markerNeedsRefresh = false;
     std::string markerVersion;
     std::vector<std::string> missing;
     std::string hashesJson;
@@ -381,22 +388,27 @@ struct InstallCheck {
 static InstallCheck checkInstall(const std::wstring& gameDir, const std::wstring& uiDir) {
     InstallCheck r;
     (void)uiDir;
-    const std::wstring keyPaths[] = { gameDir + L"\\mcla.exe", gameDir + L"\\cache\\mcla.toml" };
-    const char* keyNames[] = { "mcla.exe", "cache/mcla.toml" };
     std::string hashes = "{";
     size_t hashCount = 0;
     bool allFiles = true;
-    for (size_t i = 0; i < 2; ++i) {
-        std::string hx;
-        if (!sha256OfFile(keyPaths[i], hx)) { r.missing.push_back(keyNames[i]); allFiles = false; continue; }
-        if (hashCount++) hashes += ",";
-        hashes += "\"" + std::string(keyNames[i]) + "\":\"" + hx + "\"";
+    std::string exeHash;
+    if (sha256OfFile(gameDir + L"\\mcla.exe", exeHash)) {
+        hashes += "\"mcla.exe\":\"" + exeHash + "\"";
+        ++hashCount;
+    } else {
+        r.missing.push_back("mcla.exe");
+        allFiles = false;
+    }
+    const DWORD configAttributes = GetFileAttributesW((gameDir + L"\\cache\\mcla.toml").c_str());
+    if (configAttributes == INVALID_FILE_ATTRIBUTES || (configAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        r.missing.push_back("cache/mcla.toml");
+        allFiles = false;
     }
     const std::wstring dirs[] = { gameDir + L"\\game_data" };
     const char* dirNames[] = { "game_data" };
     for (size_t i = 0; i < 1; ++i) {
         unsigned long long n = 0, b = 0;
-        dirFingerprint(dirs[i], n, b);
+        dirFingerprint(dirs[i], n, b, true);
         if (!n) { r.missing.push_back(dirNames[i]); allFiles = false; }
         if (hashCount++) hashes += ",";
         hashes += "\"" + std::string(dirNames[i]) + "\":\"" + std::to_string(n) + ":" + std::to_string(b) + "\"";
@@ -415,7 +427,17 @@ static InstallCheck checkInstall(const std::wstring& gameDir, const std::wstring
     size_t hp = 0; JVal expected = jparse(hashes, hp);
     for (const auto& kv : expected.obj) {
         const JVal* got = hs ? jget(*hs, kv.first.c_str()) : nullptr;
-        if (!got || got->type != JVal::STR || got->s != kv.second.s) { same = false; r.missing.push_back("hash mismatch: " + kv.first); }
+        if (got && got->type == JVal::STR && got->s == kv.second.s) continue;
+        if (got && got->type == JVal::STR && kv.first == "game_data" && jget(*hs, "cache/mcla.toml")) {
+            unsigned long long files = 0, bytes = 0;
+            dirFingerprint(gameDir + L"\\game_data", files, bytes);
+            if (got->s == std::to_string(files) + ":" + std::to_string(bytes)) {
+                r.markerNeedsRefresh = true;
+                continue;
+            }
+        }
+        same = false;
+        r.missing.push_back("hash mismatch: " + kv.first);
     }
     r.markerValid = allFiles && same;
     return r;
@@ -428,6 +450,22 @@ static bool writeReadyMarker(const std::wstring& gameDir, const std::wstring& ui
     strftime(stamp, sizeof stamp, "%Y-%m-%dT%H:%M:%SZ", gmtime(&now));
     const std::string body = "{\"version\":\"" + std::string(kInstallVersion) + "\",\"created\":\"" + stamp + "\",\"hashes\":" + c.hashesJson + "}\r\n";
     return writeFileAtomic(gameDir + kReadyRel, body);
+}
+
+static bool adoptExistingInstall(const std::wstring& gameDir, const std::wstring& uiDir) {
+    if (exists(gameDir + kReadyRel)) return false;
+    for (const auto& entry : kMclaIsoManifest) {
+        const std::string_view name = entry.name;
+        if (name != "default.xex" && name != "xarchive_cache.rpf" && name != "xarchive_audlo.rpf" &&
+            name != "xarchive_audio.rpf" && name != "xarchive_music.rpf") continue;
+        const std::wstring path = gameDir + L"\\game_data\\" + widen(entry.name);
+        WIN32_FILE_ATTRIBUTE_DATA file{};
+        if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &file) ||
+            (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) return false;
+        const auto size = (static_cast<unsigned long long>(file.nFileSizeHigh) << 32) | file.nFileSizeLow;
+        if (size != static_cast<unsigned long long>(entry.size)) return false;
+    }
+    return writeReadyMarker(gameDir, uiDir);
 }
 
 static std::string installStatusJson(const std::wstring& gameDir, const std::wstring& uiDir) {
@@ -540,6 +578,9 @@ static bool runInstall(const std::wstring& src, const std::wstring& gameDir, con
         return true;
     }
     if (!exists(src)) { error = "install source folder not found"; return false; }
+    std::error_code dirError;
+    std::filesystem::create_directories(gameDir, dirError);
+    if (dirError) { error = "cannot create game folder: " + dirError.message(); return false; }
     int files = 0;
     const std::wstring filesToCopy[] = { L"mcla.exe", L"mcla.toml" };
     for (const auto& f : filesToCopy) {
@@ -556,7 +597,11 @@ static bool runInstall(const std::wstring& src, const std::wstring& gameDir, con
     const std::wstring trees[] = { L"content", L"game_data", L"launcher\\ui" };
     const std::wstring dest[] = { gameDir + L"\\content", gameDir + L"\\game_data", uiDir };
     for (size_t i = 0; i < 3; ++i) {
-        if (exists(src + L"\\" + trees[i]) && !copyTree(src + L"\\" + trees[i], dest[i], error, files)) return false;
+        const std::wstring source = src + L"\\" + trees[i];
+        if (!exists(source)) continue;
+        std::filesystem::create_directories(dest[i], dirError);
+        if (dirError) { error = "cannot create install folder: " + dirError.message(); return false; }
+        if (!copyTree(source, dest[i], error, files)) return false;
     }
     eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallProgress){window.MCLALauncherAPI.setInstallProgress(100,'verify')}");
     if (!writeReadyMarker(gameDir, uiDir)) { error = "verification failed; ready marker was not created"; return false; }
@@ -756,7 +801,7 @@ static int selfTest(){
     std::wstring rtIni = std::wstring(tmp) + L"mcla_rt.ini", rtDir = std::wstring(tmp) + L"mcla_rt_cache";
     CreateDirectoryW(rtDir.c_str(), nullptr);
     DeleteFileW(rtIni.c_str()); DeleteFileW((rtDir + L"\\mcla.toml").c_str());
-    const std::string rtJs = R"({"display":{"display_mode":"borderless_fullscreen","resolution_scale":2,"vsync":false,"mcla_aspect_ratio":"32:9","mcla_fps":120},"renderer":{"mcla_shadows":true,"mcla_ambient_occlusion":false},"input":{"mcla_key_throttle":"W","mcla_key_rt":"W"},"profile":{"mcla_profile_name":"Racer"},"_env":{"resolution_preset":"2560x1440","MCLA_WINDOW_W":"2560","MCLA_WINDOW_H":"1440","MCLA_HUD_SCALE":1.25,"MCLA_HDR":1}})";
+    const std::string rtJs = R"({"display":{"display_mode":"borderless_fullscreen","resolution_scale":2,"vsync":false,"mcla_aspect_ratio":"32:9","mcla_fps":120},"renderer":{"mcla_shadows":true,"mcla_ambient_occlusion":false},"input":{"mcla_key_throttle":"W","mcla_key_rt":"W"},"profile":{"mcla_profile_name":"Racer"},"_env":{"resolution_preset":"3440x1440","MCLA_WINDOW_W":"3440","MCLA_WINDOW_H":"1440","MCLA_HUD_SCALE":1.25,"MCLA_HDR":1}})";
     { size_t p = 0; JVal r = jparse(rtJs, p); writeToml(r, rtIni, rtDir + L"\\mcla.toml"); }
     std::string rtOut = tomlToJson(L"", rtDir, rtIni);
     DeleteFileW(rtIni.c_str()); DeleteFileW((rtDir + L"\\mcla.toml").c_str()); RemoveDirectoryW(rtDir.c_str());
@@ -768,7 +813,7 @@ static int selfTest(){
     if(rtOut.find("\"mcla_shadows\":1")==std::string::npos || rtOut.find("\"mcla_ambient_occlusion\":0")==std::string::npos) return 24;
     if(rtOut.find("\"mcla_key_throttle\":\"W\"")==std::string::npos || rtOut.find("\"mcla_key_rt\":\"W\"")==std::string::npos) return 25;
     if(rtOut.find("\"mcla_profile_name\":\"Racer\"")==std::string::npos) return 26;
-    if(rtOut.find("\"resolution_preset\":\"2560x1440\"")==std::string::npos) return 27;
+    if(rtOut.find("\"resolution_preset\":\"3440x1440\"")==std::string::npos) return 27;
     if(rtOut.find("\"MCLA_HUD_SCALE\":1.25")==std::string::npos || rtOut.find("\"MCLA_HDR\":1")==std::string::npos) return 28;
 
     std::wstring mdir = std::wstring(tmp) + L"mcla_st_mods";
@@ -788,9 +833,8 @@ static int selfTest(){
     std::error_code ec;
     std::filesystem::remove_all(idir, ec);
     std::wstring sg = idir + L"\\game", ss = idir + L"\\src", sui = sg + L"\\launcher\\ui";
-    CreateDirectoryW(ss.c_str(), nullptr);
+    std::filesystem::create_directories(ss + L"\\launcher\\ui", ec);
     CreateDirectoryW((ss + L"\\cache").c_str(), nullptr);
-    CreateDirectoryW((ss + L"\\launcher\\ui").c_str(), nullptr);
     CreateDirectoryW((ss + L"\\content").c_str(), nullptr);
     CreateDirectoryW((ss + L"\\game_data").c_str(), nullptr);
     writeFileAtomic(ss + L"\\mcla.exe", "mock-exe");
@@ -804,6 +848,12 @@ static int selfTest(){
     if (!runInstall(ss, sg, sui, ierr)) return 32;
     if (!checkInstall(sg, sui).markerValid) return 33;
     if (slurp(sg + kReadyRel).find(std::string("\"version\":\"") + kInstallVersion + "\"") == std::string::npos) return 34;
+    if (slurp(sui + L"\\index.html") != "<html>mock</html>") return 36;
+    if (!writeFileAtomic(sg + L"\\cache\\mcla.toml", "resolution_scale = 2\r\n") ||
+        !checkInstall(sg, sui).markerValid) return 37;
+    if (!CreateDirectoryW((sg + L"\\game_data\\mods").c_str(), nullptr) ||
+        !writeFileAtomic(sg + L"\\game_data\\mods\\modlist.txt", "example\r\n") ||
+        !checkInstall(sg, sui).markerValid) return 38;
     writeFileAtomic(sg + L"\\mcla.exe", "tampered");
     if (checkInstall(sg, sui).markerValid) return 35;
     std::filesystem::remove_all(idir, ec);
@@ -1101,22 +1151,24 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
         const JVal* tm = ex ? jget(*ex, "toml") : nullptr;
         JVal none; const JVal& extraToml = tm ? *tm : none;
 
-        const bool installedForWrite = checkInstall(g_gameDir, g_uiDir).markerValid;
         const bool settingsWrite = action == "optionChanged" || action == "saveConfig" || action == "restoreDefaults" ||
             action == "applyGraphicsPreset" || action == "applyControlPreset" || action == "resetKeymap" ||
             action == "saveModlist" || action == "launchGame";
-        if (!installedForWrite && settingsWrite) { eval("if(typeof mclaBadInput==='function'){mclaBadInput('locked-row')}"); return S_OK; }
+        if (settingsWrite && !checkInstall(g_gameDir, g_uiDir).markerValid) { eval("if(typeof mclaBadInput==='function'){mclaBadInput('locked-row')}"); return S_OK; }
 
         if (action == "ready") {
             wchar_t lang[16] = {};
             GetPrivateProfileStringW(L"launcher", L"installLang", L"en", lang, 16, g_ini.c_str());
             eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallLanguage){window.MCLALauncherAPI.setInstallLanguage('" + normalizeLang(narrow(lang)) + "')}");
             eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallSource){window.MCLALauncherAPI.setInstallSource('" + jesc(narrow(g_installSource)) + "')}");
+            if (!g_installMode) adoptExistingInstall(g_gameDir, g_uiDir);
+            const InstallCheck install = checkInstall(g_gameDir, g_uiDir);
+            if (install.markerValid && install.markerNeedsRefresh) writeReadyMarker(g_gameDir, g_uiDir);
             eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
             wchar_t cancelled[8] = {};
             GetPrivateProfileStringW(L"launcher", L"installCancelled", L"", cancelled, 8, g_ini.c_str());
             (void)cancelled;
-            const bool installed = checkInstall(g_gameDir, g_uiDir).markerValid;
+            const bool installed = install.markerValid;
             if (installed && !g_cvarJson.empty()) eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadCVars){window.MCLALauncherAPI.loadCVars(" + g_cvarJson + ");}");
             if (installed) eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadConfig){window.MCLALauncherAPI.loadConfig(" + tomlToJson() + ");}");
             if (installed) eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadMods){window.MCLALauncherAPI.loadMods(" + listModsJson() + ");}");
@@ -1245,6 +1297,8 @@ struct MsgHandler : public ICoreWebView2WebMessageReceivedEventHandler {
                     g_cacheDir = g_gameDir + L"\\cache";
                     CreateDirectoryW(g_cacheDir.c_str(), nullptr);
                     WritePrivateProfileStringW(L"launcher", L"gameDir", full, g_ini.c_str());
+                    adoptExistingInstall(g_gameDir, g_uiDir);
+                    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadInstallStatus){window.MCLALauncherAPI.loadInstallStatus(" + installStatusJson(g_gameDir, g_uiDir) + ")}");
                     eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadConfig){window.MCLALauncherAPI.loadConfig(" + tomlToJson() + ");}");
                     eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.loadMods){window.MCLALauncherAPI.loadMods(" + listModsJson() + ");}");
                     eval("if(window.showToast)window.showToast('GAME FOLDER UPDATED');");

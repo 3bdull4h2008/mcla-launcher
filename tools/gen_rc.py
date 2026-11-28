@@ -11,6 +11,8 @@ entries = [
     (7, r"..\ui\fonts\saira-600.woff2"),
     (8, r"..\ui\fonts\saira-700.woff2"),
     (9, r"..\deps\WebView2Loader.dll"),
+    (10, r"..\ui\fonts\noto-kufi-arabic-700.woff2"),
+    (11, r"..\ui\fonts\OFL-NotoKufiArabic.txt"),
 ]
 for rid, rel in entries:
     p = os.path.join(root, rel.replace("..\\", ""))

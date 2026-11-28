@@ -10,6 +10,13 @@
   @font-face { font-family: 'Rajdhani'; font-weight: 700; font-display: swap; src: url('fonts/rajdhani-700.woff2') format('woff2'); }
   @font-face { font-family: 'Saira Semi Condensed'; font-weight: 600; font-display: swap; src: url('fonts/saira-600.woff2') format('woff2'); }
   @font-face { font-family: 'Saira Semi Condensed'; font-weight: 700; font-display: swap; src: url('fonts/saira-700.woff2') format('woff2'); }
+  @font-face {
+    font-family: 'MCLA_AR';
+    font-weight: 600 700;
+    font-display: swap;
+    src: url('fonts/noto-kufi-arabic-700.woff2') format('woff2');
+    unicode-range: U+0600-06FF, U+0750-077F, U+0870-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+  }
 
   @font-face {
     font-family: 'MCLA_HUD_Local';
@@ -44,6 +51,11 @@
     height: 446px;
     overflow: hidden;
     font-family: 'MCLA_HUD_Local', 'Bahnschrift', 'Saira Semi Condensed', 'Rajdhani', 'Liberation Sans Narrow', sans-serif;
+  }
+  html[dir="rtl"] body {
+    font-family: 'MCLA_AR', 'MCLA_HUD_Local', 'Bahnschrift', 'Saira Semi Condensed', sans-serif;
+  }
+  body {
     background: radial-gradient(circle at 50% 48%, #1c2226 0%, #101417 58%, #090b0d 100%);
     color: var(--mcla-text);
     display: flex;
@@ -796,7 +808,8 @@ window.MCLA_DEFAULT_SCHEMA = {
             "1280x720 (720P)",
             "1920x1080 (1080P)",
             "2560x1440 (1440P)",
-            "3840x2160 (4K)"
+            "3840x2160 (4K)",
+            "CUSTOM"
           ],
           "default": "1280x720 (720P)",
           "tomlSection": "_env",
@@ -806,6 +819,13 @@ window.MCLA_DEFAULT_SCHEMA = {
             "2560x1440 (1440P)": "2560x1440",
             "3840x2160 (4K)": "3840x2160"
           }
+        },
+        {
+          "key": "custom_window_resolution",
+          "label": "CUSTOM WIDTH × HEIGHT",
+          "type": "text",
+          "maxLength": 13,
+          "default": "1280x720"
         },
         {
           "key": "resolution_scale",
@@ -870,6 +890,7 @@ window.MCLA_DEFAULT_SCHEMA = {
           "visible": true,
           "values": [
             "auto",
+            "4:3",
             "16:9",
             "16:10",
             "21:9",
@@ -880,6 +901,7 @@ window.MCLA_DEFAULT_SCHEMA = {
           "tomlSection": "display",
           "valueMap": {
             "auto": "auto",
+            "4:3": "4:3",
             "16:9": "16:9",
             "16:10": "16:10",
             "21:9": "21:9",
@@ -2706,6 +2728,15 @@ function buildDefaultConfig(schema) {
   return cfg;
 }
 
+function normalizeWindowResolution(value) {
+  const match = /^(\d{3,4})\s*[x×]\s*(\d{3,4})$/i.exec(String(value ?? '').trim());
+  if (!match) return undefined;
+  const w = Number(match[1]);
+  const h = Number(match[2]);
+  if (w >= 640 && w <= 7680 && h >= 480 && h <= 4320) return `${w}x${h}`;
+  return undefined;
+}
+
 function buildResolvedValues(schema, cfg) {
   const out = {};
   const cliArgs = [];
@@ -2713,9 +2744,12 @@ function buildResolvedValues(schema, cfg) {
     (tab.options || []).forEach(opt => {
       if (opt.visible === false || !opt.key) return;
       const rawVal = cfg[tab.id] ? cfg[tab.id][opt.key] : opt.default;
-      const mapped = (opt.valueMap && Object.prototype.hasOwnProperty.call(opt.valueMap, rawVal))
+      let mapped = (opt.valueMap && Object.prototype.hasOwnProperty.call(opt.valueMap, rawVal))
         ? opt.valueMap[rawVal]
         : rawVal;
+      if (opt.key === 'resolution_preset' && rawVal === 'CUSTOM') {
+        mapped = normalizeWindowResolution(cfg[tab.id]?.custom_window_resolution) || opt.valueMap[opt.default];
+      }
       if (opt.tomlSection) {
         if (!out[opt.tomlSection]) out[opt.tomlSection] = {};
         out[opt.tomlSection][opt.key] = mapped;
@@ -2849,6 +2883,12 @@ window.MCLALauncherAPI = {
         if (candidate === undefined && opt.tomlSection && cfg[opt.tomlSection]) candidate = findKeyCase(cfg[opt.tomlSection], optLower);
         if (candidate === undefined) candidate = findKeyCase(cfg, optLower);
         const resolvedVal = resolveIncomingOptionValue(opt, candidate);
+        if (opt.key === 'resolution_preset' && resolvedVal !== undefined && !opt.values.includes(resolvedVal)) {
+          const custom = normalizeWindowResolution(resolvedVal);
+          if (custom) activeConfig[tab.id].custom_window_resolution = custom;
+          activeConfig[tab.id][opt.key] = custom ? 'CUSTOM' : opt.default;
+          return;
+        }
         if (resolvedVal !== undefined) activeConfig[tab.id][opt.key] = resolvedVal;
       });
     });
@@ -3378,6 +3418,7 @@ const MCLA_BAD_INPUT_MAP = {
   'bad-iso': 'SELECT A VALID .ISO FILE',
   'missing-source': 'CHOOSE A SOURCE FOLDER',
   'bad-path': 'INVALID FOLDER PATH',
+  'invalid-resolution': 'ENTER 640–7680 × 480–4320',
   'invalid-language': 'LANGUAGE RESET TO ENGLISH',
   'hash-mismatch': 'FILES CHANGED — REINSTALL',
   'install-failed': 'INSTALL FAILED — CHECK LOG',
@@ -3714,18 +3755,25 @@ function renderScreen(animDir) {
           <div class="row-right"><input class="text-value" type="text" maxlength="${opt.maxLength || 15}" value="${String(val ?? '').replace(/"/g, '&quot;')}" spellcheck="false" ${window.__mclaInstallReady ? '' : 'disabled'} /></div>
         `;
         const input = row.querySelector('.text-value');
-        const sanitize = (value) => value.replace(/[^ -~]/g, '').replace(/=/g, '').slice(0, opt.maxLength || 15);
+        const isCustomResolution = opt.key === 'custom_window_resolution';
+        const sanitize = (value) => (isCustomResolution ? value.replace(/×/g, 'x') : value)
+          .replace(/[^ -~]/g, '').replace(/=/g, '').slice(0, opt.maxLength || 15);
         const commit = () => {
           if (row.classList.contains('is-locked')) { mclaBadInput('locked-row'); input.value = String(val ?? ''); return; }
-          const clean = sanitize(input.value) || String(opt.default || 'SWA');
+          const clean = isCustomResolution ? normalizeWindowResolution(input.value) : sanitize(input.value) || String(opt.default || 'SWA');
+          if (clean === undefined) { mclaBadInput('invalid-resolution'); input.value = String(val ?? opt.default); return; }
           input.value = clean;
+          if (isCustomResolution && clean === activeConfig[tabObj.id][opt.key]) return;
+          const useCustom = isCustomResolution && activeConfig[tabObj.id].resolution_preset !== 'CUSTOM';
           activeConfig[tabObj.id][opt.key] = clean;
+          if (useCustom) activeConfig[tabObj.id].resolution_preset = 'CUSTOM';
           window.MCLALauncherAPI.emitAction('optionChanged', { tab: tabObj.id, key: opt.key, value: clean });
+          if (useCustom) renderScreen('none');
         };
         input.addEventListener('input', () => {
           const clean = sanitize(input.value);
           if (clean !== input.value) input.value = clean;
-          activeConfig[tabObj.id][opt.key] = clean;
+          if (!isCustomResolution) activeConfig[tabObj.id][opt.key] = clean;
         });
         input.addEventListener('change', commit);
         input.addEventListener('blur', commit);
