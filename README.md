@@ -38,8 +38,9 @@ Output: `out\mcla_launcher.exe` — a **single executable**. The WebView2 loader
 the icon are embedded as resources and extracted to `%LOCALAPPDATA%\MCLA_Launcher\WebView2\` on
 first run. There is no `launcher\` folder next to the game.
 
-The installer accepts a single `.iso` file (CHOOSE ISO). It first downloads `mcla.exe` from the
-game's GitHub release (`engine-v1`) and verifies its SHA-256, then validates the ISO9660 header,
+The installer accepts a single `.iso` file (CHOOSE ISO). It first downloads `mcla.exe` plus the
+required `SDL3.dll`, `dxcompiler.dll` and `dxil.dll` from the game's GitHub release (`engine-v1`)
+and verifies each SHA-256, then validates the ISO9660 header,
 extracts the measured game-file map from `src/iso_manifest.h`, writes a clean `cache/mcla.toml`,
 removes development leftovers (`*.log`, `*.pdb`, `*.dmp`), and warms the PSO/shader caches by
 running `mcla.exe` once with `MCLA_PSO_PREWARM=1`. Building the game from source on the player's

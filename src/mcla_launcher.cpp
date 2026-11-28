@@ -47,6 +47,13 @@ static const wchar_t kRuntimeUrl[] = L"https://go.microsoft.com/fwlink/p/?LinkId
 static const char kInstallVersion[] = "1.0.0-rc1";
 static const wchar_t kEngineUrl[] = L"https://github.com/3bdull4h2008/MCLArecomp_native/releases/download/engine-v1/mcla.exe";
 static const char kEngineSha256[] = "9abb0b72d5627edd6f982f49c5637a0ea25b18a50ef00be01f96c2cdd1869386";
+struct EngineFile { const wchar_t* name; const wchar_t* url; const char* sha; };
+static const EngineFile kEngineFiles[] = {
+    { L"mcla.exe", kEngineUrl, kEngineSha256 },
+    { L"SDL3.dll", L"https://github.com/3bdull4h2008/MCLArecomp_native/releases/download/engine-v1/SDL3.dll", "771b416c3cb61e1bc6ab6513f257ef85e908a051a1790d49f7381c89f7e5bd25" },
+    { L"dxcompiler.dll", L"https://github.com/3bdull4h2008/MCLArecomp_native/releases/download/engine-v1/dxcompiler.dll", "1220478c87af97551d2342906c5a08d888ee9fa26f6f99b6072d674801f492d1" },
+    { L"dxil.dll", L"https://github.com/3bdull4h2008/MCLArecomp_native/releases/download/engine-v1/dxil.dll", "e038a9755387fc396a9a5f393d292b9318cf6ac7e520e9283bbc3088c5f8ac93" },
+};
 static const wchar_t kReadyRel[] = L"\\cache\\mcla_ready.json";
 static bool g_installMode = false;
 static std::wstring g_installSource;
@@ -454,23 +461,28 @@ static bool copyTree(const std::wstring& from, const std::wstring& to, std::stri
 }
 
 static bool ensureEngine(const std::wstring& gameDir, std::string& error) {
-    const std::wstring target = gameDir + L"\\mcla.exe";
-    std::string hash;
-    if (exists(target) && sha256OfFile(target, hash) && hash == kEngineSha256) return true;
-    const std::wstring tmp = target + L".download";
-    DeleteFileW(tmp.c_str());
-    eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallProgress){window.MCLALauncherAPI.setInstallProgress(20,'copy')}");
-    HRESULT hr = URLDownloadToFileW(nullptr, kEngineUrl, tmp.c_str(), 0, nullptr);
-    if (FAILED(hr) || !exists(tmp)) { error = "engine download failed"; DeleteFileW(tmp.c_str()); return false; }
-    hash.clear();
-    if (!sha256OfFile(tmp, hash) || hash != kEngineSha256) {
-        error = "engine hash mismatch";
+    int done = 0;
+    for (const auto& f : kEngineFiles) {
+        const std::wstring target = gameDir + L"\\" + f.name;
+        std::string hash;
+        if (exists(target) && sha256OfFile(target, hash) && hash == f.sha) { ++done; continue; }
+        const std::wstring tmp = target + L".download";
         DeleteFileW(tmp.c_str());
-        return false;
-    }
-    if (!MoveFileExW(tmp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        error = "engine install failed";
-        return false;
+        eval("if(window.MCLALauncherAPI&&window.MCLALauncherAPI.setInstallProgress){window.MCLALauncherAPI.setInstallProgress(" +
+             std::to_string(10 + done * 15) + ",'copy')}");
+        HRESULT hr = URLDownloadToFileW(nullptr, f.url, tmp.c_str(), 0, nullptr);
+        if (FAILED(hr) || !exists(tmp)) { error = std::string("download failed: ") + narrow(f.name); DeleteFileW(tmp.c_str()); return false; }
+        hash.clear();
+        if (!sha256OfFile(tmp, hash) || hash != f.sha) {
+            error = std::string("hash mismatch: ") + narrow(f.name);
+            DeleteFileW(tmp.c_str());
+            return false;
+        }
+        if (!MoveFileExW(tmp.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            error = std::string("install failed: ") + narrow(f.name);
+            return false;
+        }
+        ++done;
     }
     return true;
 }
@@ -511,7 +523,7 @@ static bool extractIso(const std::wstring& iso, const std::wstring& gameDir, std
     SHCreateDirectoryExW(nullptr, (gameDir + L"\\cache").c_str(), nullptr);
     writeFileAtomic(gameDir + L"\\cache\\mcla.toml", "mcla_fps = 60\r\nresolution_scale = 1\r\nvsync = true\r\n");
     SHCreateDirectoryExW(nullptr, (gameDir + L"\\dxil_cache").c_str(), nullptr);
-    SHCreateDirectoryExW(nullptr, (gameDir + L"\\mods").c_str(), nullptr);
+    SHCreateDirectoryExW(nullptr, (gameDir + L"\\game_data\\mods").c_str(), nullptr);
     return true;
 }
 
@@ -640,6 +652,7 @@ static void writeToml(const JVal& root, const std::wstring& ini, const std::wstr
                 else if (k == "vsync") k = "MCLA_VSYNC";
                 if (kGeneratedEnvOk.count(k)) envSets.push_back({ k, val });
             } else {
+                if (kv.first == "mcla_hud_scale") envSets.push_back({ "MCLA_HUD_SCALE", val });
                 if (kv.first == "mcla_ambient_occlusion") envSets.push_back({ "MCLA_AMBIENT_OCCLUSION", val });
                 else if (kv.first == "mcla_shadows") envSets.push_back({ "MCLA_SHADOWS", val });
                 else if (kv.first == "resolution_scale") envSets.push_back({ "MCLA_RENDER_SCALE", val });
@@ -1011,7 +1024,11 @@ static void cleanupDevFiles(const std::wstring& gameDir) {
         size_t dot = name.find_last_of(L'.');
         if (dot != std::wstring::npos) {
             std::wstring ext = name.substr(dot);
-            if (_wcsicmp(ext.c_str(), L".log") == 0 || _wcsicmp(ext.c_str(), L".pdb") == 0 || _wcsicmp(ext.c_str(), L".dmp") == 0)
+            const bool devDump = name.find(L"_toc") != std::wstring::npos || name.find(L"_parsed") != std::wstring::npos ||
+                name.find(L"crash_") == 0 || name.find(L"dump_") == 0;
+            if (_wcsicmp(ext.c_str(), L".log") == 0 || _wcsicmp(ext.c_str(), L".pdb") == 0 ||
+                _wcsicmp(ext.c_str(), L".dmp") == 0 || _wcsicmp(ext.c_str(), L".tmp") == 0 ||
+                _wcsicmp(ext.c_str(), L".download") == 0 || devDump)
                 DeleteFileW((gameDir + L"\\" + name).c_str());
         }
     } while (FindNextFileW(h, &fd));
